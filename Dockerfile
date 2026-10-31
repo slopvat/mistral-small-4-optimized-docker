@@ -125,25 +125,38 @@ RUN --mount=type=secret,id=hf_token,env=HF_TOKEN \
         --include "UD-Q8_K_XL/*" --include "mmproj-BF16.gguf" \
     && rm -rf /models/.cache
 
+# The models come before the entrypoint script and settings so that changing
+# those only rebuilds the small last layers instead of copying the model
+# again.
 FROM runtime AS serve
-COPY mistral-serve /usr/local/bin/mistral-serve
 COPY --from=drafter /out/dspark-q8_0.gguf /models/dspark-q8_0.gguf
-ENV HF_HUB_OFFLINE=1
+
+FROM serve AS q4-models
+COPY --from=gguf-q4 /models/ /models/
+
+FROM serve AS q8-models
+COPY --from=gguf-q8 /models/ /models/
+
+FROM q4-models AS q4
+COPY mistral-serve /usr/local/bin/mistral-serve
+# One GPU holds the whole model; layer-splitting it over two only adds hops.
+ENV HF_HUB_OFFLINE=1 \
+    DEFAULT_MODEL=/models/UD-Q4_K_XL/Mistral-Small-4-119B-2603-UD-Q4_K_XL-00001-of-00003.gguf \
+    DEFAULT_SERVED_MODEL_NAME="mistral-small-4 unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q4_K_XL" \
+    DEFAULT_CUDA_VISIBLE_DEVICES=0 \
+    DEFAULT_SPEC_DRAFT_N_MAX=2
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30m \
     CMD curl -fs "http://127.0.0.1:${PORT:-8000}/health" || exit 1
 ENTRYPOINT ["/usr/local/bin/mistral-serve"]
 
-FROM serve AS q4
-COPY --from=gguf-q4 /models/ /models/
-# One GPU holds the whole model; layer-splitting it over two only adds hops.
-ENV DEFAULT_MODEL=/models/UD-Q4_K_XL/Mistral-Small-4-119B-2603-UD-Q4_K_XL-00001-of-00003.gguf \
-    DEFAULT_SERVED_MODEL_NAME="mistral-small-4 unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q4_K_XL" \
-    DEFAULT_CUDA_VISIBLE_DEVICES=0 \
-    DEFAULT_SPEC_DRAFT_N_MAX=2
-
-FROM serve AS q8
-COPY --from=gguf-q8 /models/ /models/
-ENV DEFAULT_MODEL=/models/UD-Q8_K_XL/Mistral-Small-4-119B-2603-UD-Q8_K_XL-00001-of-00004.gguf \
+FROM q8-models AS q8
+COPY mistral-serve /usr/local/bin/mistral-serve
+ENV HF_HUB_OFFLINE=1 \
+    DEFAULT_MODEL=/models/UD-Q8_K_XL/Mistral-Small-4-119B-2603-UD-Q8_K_XL-00001-of-00004.gguf \
     DEFAULT_SERVED_MODEL_NAME="mistral-small-4 unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q8_K_XL" \
     DEFAULT_SPEC_DRAFT_N_MAX=3
+EXPOSE 8000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30m \
+    CMD curl -fs "http://127.0.0.1:${PORT:-8000}/health" || exit 1
+ENTRYPOINT ["/usr/local/bin/mistral-serve"]
