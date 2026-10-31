@@ -1,0 +1,9 @@
+{
+ "name": "image-q4-8-users-spec-draft-dspark,ngram-mod",
+ "users": 8,
+ "requests": 96,
+ "tokens": 47805,
+ "seconds": 251.9,
+ "total_tok_s": 189.8,
+ "per_user_tok_s": 23.7
+}

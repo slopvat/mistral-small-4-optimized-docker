@@ -1,0 +1,467 @@
+{
+ "name": "c4-mxfp4-moe-dspark-n3",
+ "model": "MXFP4_MOE/Mistral-Small-4-119B-2603-MXFP4_MOE-00001-of-00003.gguf",
+ "gpus": "0",
+ "draft": "drafters-gguf/dspark-q8_0.gguf",
+ "server_args": [
+  "-c",
+  "32768",
+  "--spec-type",
+  "draft-dspark,ngram-mod",
+  "--spec-draft-n-max",
+  "3"
+ ],
+ "load_s": 8.1,
+ "max_tokens": 512,
+ "n_prompts": 12,
+ "tok_s": 219.1,
+ "accept_rate": 0.487,
+ "by_prompt": {
+  "code": 213.1,
+  "code-edit": 223.4,
+  "sql": 242.2,
+  "prose": 186.1,
+  "story": 171.2,
+  "explain": 201.1,
+  "summary": 207.7,
+  "translation": 177.4,
+  "qa": 219.8,
+  "math": 255.7,
+  "json": 260.7,
+  "list": 197.0
+ },
+ "rows": [
+  {
+   "run": 0,
+   "prompt": "code",
+   "predicted_n": 512,
+   "predicted_ms": 2488.093,
+   "tok_s": 205.3781751727126,
+   "draft_n": 580,
+   "draft_accepted_n": 317
+  },
+  {
+   "run": 0,
+   "prompt": "code-edit",
+   "predicted_n": 485,
+   "predicted_ms": 2168.508,
+   "tok_s": 223.19493402837344,
+   "draft_n": 519,
+   "draft_accepted_n": 312
+  },
+  {
+   "run": 0,
+   "prompt": "sql",
+   "predicted_n": 512,
+   "predicted_ms": 2117.167,
+   "tok_s": 241.36027058800747,
+   "draft_n": 498,
+   "draft_accepted_n": 344
+  },
+  {
+   "run": 0,
+   "prompt": "prose",
+   "predicted_n": 512,
+   "predicted_ms": 2753.749,
+   "tok_s": 185.56520583393768,
+   "draft_n": 663,
+   "draft_accepted_n": 290
+  },
+  {
+   "run": 0,
+   "prompt": "story",
+   "predicted_n": 458,
+   "predicted_ms": 2677.143,
+   "tok_s": 170.70436655793134,
+   "draft_n": 648,
+   "draft_accepted_n": 241
+  },
+  {
+   "run": 0,
+   "prompt": "explain",
+   "predicted_n": 512,
+   "predicted_ms": 2549.367,
+   "tok_s": 200.44191362012606,
+   "draft_n": 610,
+   "draft_accepted_n": 307
+  },
+  {
+   "run": 0,
+   "prompt": "summary",
+   "predicted_n": 512,
+   "predicted_ms": 2467.569,
+   "tok_s": 207.08640771544788,
+   "draft_n": 589,
+   "draft_accepted_n": 314
+  },
+  {
+   "run": 0,
+   "prompt": "translation",
+   "predicted_n": 512,
+   "predicted_ms": 2887.68,
+   "tok_s": 176.95866578014184,
+   "draft_n": 697,
+   "draft_accepted_n": 278
+  },
+  {
+   "run": 0,
+   "prompt": "qa",
+   "predicted_n": 512,
+   "predicted_ms": 2332.1,
+   "tok_s": 219.11581836113373,
+   "draft_n": 555,
+   "draft_accepted_n": 325
+  },
+  {
+   "run": 0,
+   "prompt": "math",
+   "predicted_n": 409,
+   "predicted_ms": 1598.883,
+   "tok_s": 255.17814624334613,
+   "draft_n": 381,
+   "draft_accepted_n": 281
+  },
+  {
+   "run": 0,
+   "prompt": "json",
+   "predicted_n": 512,
+   "predicted_ms": 1965.386,
+   "tok_s": 259.99981682987465,
+   "draft_n": 465,
+   "draft_accepted_n": 355
+  },
+  {
+   "run": 0,
+   "prompt": "list",
+   "predicted_n": 512,
+   "predicted_ms": 2598.355,
+   "tok_s": 196.66288863530966,
+   "draft_n": 619,
+   "draft_accepted_n": 303
+  },
+  {
+   "run": 1,
+   "prompt": "code",
+   "predicted_n": 512,
+   "predicted_ms": 2230.286,
+   "tok_s": 229.11859734581122,
+   "draft_n": 575,
+   "draft_accepted_n": 339
+  },
+  {
+   "run": 1,
+   "prompt": "code-edit",
+   "predicted_n": 408,
+   "predicted_ms": 1698.321,
+   "tok_s": 239.6484527954374,
+   "draft_n": 705,
+   "draft_accepted_n": 294
+  },
+  {
+   "run": 1,
+   "prompt": "sql",
+   "predicted_n": 512,
+   "predicted_ms": 2171.826,
+   "tok_s": 235.2858838599409,
+   "draft_n": 696,
+   "draft_accepted_n": 353
+  },
+  {
+   "run": 1,
+   "prompt": "prose",
+   "predicted_n": 512,
+   "predicted_ms": 2926.672,
+   "tok_s": 174.60104856300947,
+   "draft_n": 857,
+   "draft_accepted_n": 285
+  },
+  {
+   "run": 1,
+   "prompt": "story",
+   "predicted_n": 512,
+   "predicted_ms": 2968.199,
+   "tok_s": 172.15826836408206,
+   "draft_n": 771,
+   "draft_accepted_n": 274
+  },
+  {
+   "run": 1,
+   "prompt": "explain",
+   "predicted_n": 512,
+   "predicted_ms": 2277.02,
+   "tok_s": 224.41612282720396,
+   "draft_n": 593,
+   "draft_accepted_n": 333
+  },
+  {
+   "run": 1,
+   "prompt": "summary",
+   "predicted_n": 512,
+   "predicted_ms": 2027.209,
+   "tok_s": 252.07070410599005,
+   "draft_n": 681,
+   "draft_accepted_n": 363
+  },
+  {
+   "run": 1,
+   "prompt": "translation",
+   "predicted_n": 512,
+   "predicted_ms": 2937.867,
+   "tok_s": 173.93571594629708,
+   "draft_n": 811,
+   "draft_accepted_n": 280
+  },
+  {
+   "run": 1,
+   "prompt": "qa",
+   "predicted_n": 512,
+   "predicted_ms": 2031.223,
+   "tok_s": 251.5725747493013,
+   "draft_n": 681,
+   "draft_accepted_n": 365
+  },
+  {
+   "run": 1,
+   "prompt": "math",
+   "predicted_n": 413,
+   "predicted_ms": 1594.726,
+   "tok_s": 258.35159143326183,
+   "draft_n": 531,
+   "draft_accepted_n": 296
+  },
+  {
+   "run": 1,
+   "prompt": "json",
+   "predicted_n": 512,
+   "predicted_ms": 2008.75,
+   "tok_s": 254.38705662725576,
+   "draft_n": 527,
+   "draft_accepted_n": 355
+  },
+  {
+   "run": 1,
+   "prompt": "list",
+   "predicted_n": 512,
+   "predicted_ms": 2575.191,
+   "tok_s": 198.4318833049665,
+   "draft_n": 668,
+   "draft_accepted_n": 308
+  },
+  {
+   "run": 2,
+   "prompt": "code",
+   "predicted_n": 512,
+   "predicted_ms": 2329.522,
+   "tok_s": 219.35830612460413,
+   "draft_n": 702,
+   "draft_accepted_n": 336
+  },
+  {
+   "run": 2,
+   "prompt": "code-edit",
+   "predicted_n": 425,
+   "predicted_ms": 1695.2,
+   "tok_s": 250.11798017932983,
+   "draft_n": 604,
+   "draft_accepted_n": 304
+  },
+  {
+   "run": 2,
+   "prompt": "sql",
+   "predicted_n": 512,
+   "predicted_ms": 1652.943,
+   "tok_s": 309.1455664230406,
+   "draft_n": 766,
+   "draft_accepted_n": 407
+  },
+  {
+   "run": 2,
+   "prompt": "prose",
+   "predicted_n": 512,
+   "predicted_ms": 2331.621,
+   "tok_s": 219.16083274254262,
+   "draft_n": 749,
+   "draft_accepted_n": 338
+  },
+  {
+   "run": 2,
+   "prompt": "story",
+   "predicted_n": 512,
+   "predicted_ms": 2949.065,
+   "tok_s": 173.2752584293666,
+   "draft_n": 815,
+   "draft_accepted_n": 279
+  },
+  {
+   "run": 2,
+   "prompt": "explain",
+   "predicted_n": 512,
+   "predicted_ms": 2249.808,
+   "tok_s": 227.13049291317301,
+   "draft_n": 638,
+   "draft_accepted_n": 339
+  },
+  {
+   "run": 2,
+   "prompt": "summary",
+   "predicted_n": 512,
+   "predicted_ms": 1862.907,
+   "tok_s": 274.30247457334156,
+   "draft_n": 783,
+   "draft_accepted_n": 388
+  },
+  {
+   "run": 2,
+   "prompt": "translation",
+   "predicted_n": 512,
+   "predicted_ms": 2860.341,
+   "tok_s": 178.6500280910563,
+   "draft_n": 892,
+   "draft_accepted_n": 294
+  },
+  {
+   "run": 2,
+   "prompt": "qa",
+   "predicted_n": 512,
+   "predicted_ms": 1682.652,
+   "tok_s": 303.6872746117439,
+   "draft_n": 705,
+   "draft_accepted_n": 401
+  },
+  {
+   "run": 2,
+   "prompt": "math",
+   "predicted_n": 375,
+   "predicted_ms": 1375.076,
+   "tok_s": 271.98496664911613,
+   "draft_n": 630,
+   "draft_accepted_n": 287
+  },
+  {
+   "run": 2,
+   "prompt": "json",
+   "predicted_n": 512,
+   "predicted_ms": 1868.201,
+   "tok_s": 273.5251720773086,
+   "draft_n": 644,
+   "draft_accepted_n": 377
+  },
+  {
+   "run": 2,
+   "prompt": "list",
+   "predicted_n": 512,
+   "predicted_ms": 2572.921,
+   "tok_s": 198.60695295347196,
+   "draft_n": 666,
+   "draft_accepted_n": 308
+  },
+  {
+   "run": 3,
+   "prompt": "code",
+   "predicted_n": 512,
+   "predicted_ms": 2398.268,
+   "tok_s": 213.0704324954509,
+   "draft_n": 872,
+   "draft_accepted_n": 342
+  },
+  {
+   "run": 3,
+   "prompt": "code-edit",
+   "predicted_n": 485,
+   "predicted_ms": 2166.781,
+   "tok_s": 223.37282817229797,
+   "draft_n": 519,
+   "draft_accepted_n": 312
+  },
+  {
+   "run": 3,
+   "prompt": "sql",
+   "predicted_n": 512,
+   "predicted_ms": 2110.001,
+   "tok_s": 242.17998000948813,
+   "draft_n": 498,
+   "draft_accepted_n": 344
+  },
+  {
+   "run": 3,
+   "prompt": "prose",
+   "predicted_n": 512,
+   "predicted_ms": 2746.5,
+   "tok_s": 186.0549790642636,
+   "draft_n": 663,
+   "draft_accepted_n": 290
+  },
+  {
+   "run": 3,
+   "prompt": "story",
+   "predicted_n": 458,
+   "predicted_ms": 2669.8,
+   "tok_s": 171.17387070192524,
+   "draft_n": 648,
+   "draft_accepted_n": 241
+  },
+  {
+   "run": 3,
+   "prompt": "explain",
+   "predicted_n": 512,
+   "predicted_ms": 2541.046,
+   "tok_s": 201.09828787042818,
+   "draft_n": 610,
+   "draft_accepted_n": 307
+  },
+  {
+   "run": 3,
+   "prompt": "summary",
+   "predicted_n": 512,
+   "predicted_ms": 2460.497,
+   "tok_s": 207.68161879490202,
+   "draft_n": 589,
+   "draft_accepted_n": 314
+  },
+  {
+   "run": 3,
+   "prompt": "translation",
+   "predicted_n": 512,
+   "predicted_ms": 2879.741,
+   "tok_s": 177.44651341908875,
+   "draft_n": 697,
+   "draft_accepted_n": 278
+  },
+  {
+   "run": 3,
+   "prompt": "qa",
+   "predicted_n": 512,
+   "predicted_ms": 2325.089,
+   "tok_s": 219.77653328539253,
+   "draft_n": 555,
+   "draft_accepted_n": 325
+  },
+  {
+   "run": 3,
+   "prompt": "math",
+   "predicted_n": 409,
+   "predicted_ms": 1595.524,
+   "tok_s": 255.7153637300348,
+   "draft_n": 381,
+   "draft_accepted_n": 281
+  },
+  {
+   "run": 3,
+   "prompt": "json",
+   "predicted_n": 512,
+   "predicted_ms": 1959.926,
+   "tok_s": 260.72412938039497,
+   "draft_n": 465,
+   "draft_accepted_n": 355
+  },
+  {
+   "run": 3,
+   "prompt": "list",
+   "predicted_n": 512,
+   "predicted_ms": 2593.41,
+   "tok_s": 197.03787677228053,
+   "draft_n": 619,
+   "draft_accepted_n": 303
+  }
+ ]
+}

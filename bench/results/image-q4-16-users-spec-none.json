@@ -1,0 +1,9 @@
+{
+ "name": "image-q4-16-users-spec-none",
+ "users": 16,
+ "requests": 192,
+ "tokens": 96329,
+ "seconds": 256.6,
+ "total_tok_s": 375.4,
+ "per_user_tok_s": 23.5
+}
