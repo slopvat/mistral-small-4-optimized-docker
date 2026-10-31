@@ -89,3 +89,13 @@ for name, r in load("image-*.json").items():
         rows.append((name[len("image-"):], r["users"], r["total_tok_s"],
                      r["per_user_tok_s"]))
 table(["Run", "Users", "Total tok/s", "Per user tok/s"], rows)
+
+print("### 4-bit model on two GPUs\n")
+rows = []
+for name, r in load("tg-q4-split-*.json").items():
+    rows.append((name[3:], "1 stream", r["tok_s"]))
+for name, r in load("tg-one-gpu-*.json").items():
+    rows.append((name[3:], f"{r['users']} users", r["total_tok_s"]))
+for name, r in load("tg-replica*.json").items():
+    rows.append((name[3:], f"{r['users']} users", r["total_tok_s"]))
+table(["Run", "Load", "tok/s"], rows)

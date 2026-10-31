@@ -1,0 +1,9 @@
+{
+ "name": "tg-one-gpu-spec-2-users",
+ "users": 2,
+ "requests": 24,
+ "tokens": 12165,
+ "seconds": 61.0,
+ "total_tok_s": 199.4,
+ "per_user_tok_s": 99.7
+}

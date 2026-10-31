@@ -1,0 +1,9 @@
+{
+ "name": "tg-one-gpu-plain-8-users",
+ "users": 8,
+ "requests": 96,
+ "tokens": 47795,
+ "seconds": 127.3,
+ "total_tok_s": 375.3,
+ "per_user_tok_s": 46.9
+}

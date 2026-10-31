@@ -113,8 +113,9 @@ variable; the main ones are:
 | `TENSOR_SPLIT` | even | Proportions per GPU (q8). It made no difference to speed. |
 
 To use both GPUs with the q4 image, run two containers, one per GPU
-(`CUDA_VISIBLE_DEVICES=0` and `1`, different `PORT`s). Splitting one 4-bit
-model over two GPUs only adds hops.
+(`CUDA_VISIBLE_DEVICES=0` and `1`, different `PORT`s) and spread the
+requests between them. This doubles the throughput; splitting one model
+over two GPUs does not make it faster (see below).
 
 How the Settings Were Chosen
 ----------------------------
@@ -191,6 +192,33 @@ UD-Q4_K_XL is still the best of them.
 
 The shipped q4 image, measured as a running server (full context, image
 input enabled), decodes at 257.7 tokens/s.
+
+### Two GPUs With the 4-Bit Model
+
+Measured with "bench/sweeps/09-q4-two-gpus.sh" (11 minutes). Layer-splitting
+the model over both GPUs (llama.cpp does not allow tensor parallelism for
+this architecture) gives no speedup for a single stream, and two replicas
+roughly double the throughput of one GPU:
+
+| Setup | Load | Total tok/s |
+|---|---|--:|
+| One GPU, speculation | 2 users | 199.4 |
+| **Two replicas, speculation** | 1 user each | **380.4** |
+| One GPU, plain | 8 users | 375.3 |
+| **Two replicas, plain** | 4 users each | **592.3** |
+
+For a single stream the split makes no difference (decode speed on the
+benchmark prompts):
+
+| Setup | Speculation | Plain |
+|---|--:|--:|
+| One GPU | 260.9 | 163.0 |
+| Two GPUs, layer split | 256.9 | 163.5 |
+
+The replica on the slower card (GPU 1) served within 2% of the other one
+under these loads. Layer splitting also leaves one GPU idle while the other
+works, so it is only worth it when the model does not fit on one GPU, as with
+the 8-bit image.
 
 ### The 8-Bit Quant
 

@@ -1,0 +1,9 @@
+{
+ "name": "tg-replica1-plain",
+ "users": 4,
+ "requests": 48,
+ "tokens": 24191,
+ "seconds": 81.7,
+ "total_tok_s": 296.0,
+ "per_user_tok_s": 74.0
+}
