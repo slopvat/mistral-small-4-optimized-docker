@@ -198,7 +198,8 @@ input enabled), decodes at 257.7 tokens/s.
 Measured with "bench/sweeps/09-q4-two-gpus.sh" (11 minutes). Layer-splitting
 the model over both GPUs (llama.cpp does not allow tensor parallelism for
 this architecture) gives no speedup for a single stream, and two replicas
-roughly double the throughput of one GPU:
+serve 1.6x (plain) to 1.9x (speculation) the throughput of one GPU for the
+same number of users:
 
 | Setup | Load | Total tok/s |
 |---|---|--:|
@@ -216,8 +217,8 @@ benchmark prompts):
 | Two GPUs, layer split | 256.9 | 163.5 |
 
 The replica on the slower card (GPU 1) served within 2% of the other one
-under these loads. Layer splitting also leaves one GPU idle while the other
-works, so it is only worth it when the model does not fit on one GPU, as with
+under these loads. A layer split runs the layers one after another, so
+only one GPU works at a time (not measured); it is only worth it when the model does not fit on one GPU, as with
 the 8-bit image.
 
 ### The 8-Bit Quant
