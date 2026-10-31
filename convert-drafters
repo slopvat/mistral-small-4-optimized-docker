@@ -1,0 +1,48 @@
+#!/bin/sh
+# Usage: convert-drafters MODELS_DIR
+#
+# Convert the RedHat AI DFlash and DSpark drafters in MODELS_DIR/drafters to
+# BF16 GGUF files in MODELS_DIR/drafters-gguf using the "msl4-llama-tools"
+# image (Dockerfile.llama, "tools" target). The DFlash checkpoint uses the
+# same "speculators" config layout as the DSpark one, but llama.cpp's DFlash
+# converter only understands the z-lab layout, so a copy of it is converted
+# with its architecture renamed so that the DSpark converter handles it.
+#
+# AI Disclosure:
+# - Authorship: Autonomous
+# - Models: claude-sonnet-5-5 (Anthropic)
+# - Scope: Wrote this script to turn the drafters into GGUF files for the
+#   user's request for optimized Mistral Small 4 images.
+# - References: https://github.com/ggml-org/llama.cpp (v0.8.0,
+#   conversion/qwen.py)
+
+set -eu
+
+models=$(cd "$1" && pwd)
+mkdir -p "$models/drafters-gguf"
+rm -rf "$models/drafters-dflash-as-dspark"
+cp -r "$models/drafters/dflash" "$models/drafters-dflash-as-dspark"
+sed -i 's/DFlashDraftModel/DSparkDraftModel/' \
+    "$models/drafters-dflash-as-dspark/config.json"
+
+convert() {
+    sudo docker run --rm --entrypoint python3 -v "$models:/models" \
+        msl4-llama-tools /opt/llama.cpp-src/convert_hf_to_gguf.py "$1" \
+        --target-model-dir /models/base --outtype bf16 --outfile "$2" 2>&1 \
+        | tr '\r' '\n' | grep -v -E '^(INFO:hf-to-gguf:(blk|Set model)|Writing:)'
+}
+
+convert /models/drafters/dspark /models/drafters-gguf/dspark-bf16.gguf
+convert /models/drafters-dflash-as-dspark /models/drafters-gguf/dflash-bf16.gguf
+rm -rf "$models/drafters-dflash-as-dspark"
+ls -l "$models/drafters-gguf"
+
+# Q8_0 copies: the drafters run on every step, so reading half the bytes
+# can matter.
+for d in dflash dspark; do
+    sudo docker run --rm --device nvidia.com/gpu=0 --entrypoint llama-quantize \
+        -v "$models:/models" msl4-llama-tools \
+        "/models/drafters-gguf/$d-bf16.gguf" \
+        "/models/drafters-gguf/$d-q8_0.gguf" Q8_0 2>&1 | tail -2
+done
+ls -l "$models/drafters-gguf"

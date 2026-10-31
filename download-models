@@ -1,0 +1,39 @@
+#!/bin/sh
+# Usage: download-models DEST
+#
+# Download every file the Mistral Small 4 build and benchmarks need into DEST:
+# the Unsloth GGUF quants, the multimodal projector, the DFlash and DSpark
+# speculative decoding drafters, and the base model's non-weight files (the
+# drafters need them for conversion to GGUF). Set HF_TOKEN in the environment.
+#
+# AI Disclosure:
+# - Authorship: Autonomous
+# - Models: claude-sonnet-5-5 (Anthropic)
+# - Scope: Wrote this script to fetch the model files for the user's request
+#   to build optimized Mistral Small 4 Docker images.
+# - References: https://huggingface.co/unsloth/Mistral-Small-4-119B-2603-GGUF
+
+set -eu
+
+dest=${1:?usage: download-models DEST}
+export HF_HOME=$dest/.hf-home HF_XET_HIGH_PERFORMANCE=1
+
+gguf=unsloth/Mistral-Small-4-119B-2603-GGUF
+
+# The 8-bit image's model first, then the drafters, then the 4-bit candidates.
+hf download "$gguf" --include 'UD-Q8_K_XL/*' --include 'mmproj-BF16.gguf' \
+    --local-dir "$dest/gguf"
+hf download RedHatAI/Mistral-Small-4-119B-2603.dflash \
+    --local-dir "$dest/drafters/dflash"
+hf download RedHatAI/Mistral-Small-4-119B-2603-speculator.dspark \
+    --include '*.json' --include '*.py' --include 'model.safetensors' \
+    --local-dir "$dest/drafters/dspark"
+hf download mistralai/Mistral-Small-4-119B-2603-eagle \
+    --local-dir "$dest/drafters/eagle"
+hf download mistralai/Mistral-Small-4-119B-2603 \
+    --exclude '*.safetensors' --local-dir "$dest/base"
+for q in MXFP4_MOE UD-IQ4_XS UD-IQ4_NL UD-Q4_K_S UD-Q4_K_M UD-Q4_K_XL; do
+    hf download "$gguf" --include "$q/*" --local-dir "$dest/gguf"
+done
+rm -rf "$dest/.hf-home"
+echo "download-models: done"

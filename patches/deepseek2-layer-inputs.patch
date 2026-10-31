@@ -1,0 +1,25 @@
+Record the layer inputs of Mistral Small 4 (which reuses the deepseek2
+graph) so that DFlash and DSpark drafters can read hidden states from it.
+Without this, llama-server aborts on the first request with:
+  GGML_ASSERT(t_layer_inp[il] != nullptr && "layer input tensor is null")
+Same change as the existing one in src/models/qwen3.cpp. Apply to llama.cpp
+v0.8.0 with "patch -p1".
+
+AI Disclosure:
+- Authorship: Autonomous
+- Models: claude-sonnet-5-5 (Anthropic)
+- Scope: Wrote this patch so speculative decoding works with Mistral Small 4
+  for the user's request for optimized Mistral Small 4 images.
+- References: https://github.com/ggml-org/llama.cpp/pull/30927 (similar fix)
+
+--- a/src/models/deepseek2.cpp
++++ b/src/models/deepseek2.cpp
+@@ -457,6 +457,8 @@
+     ggml_tensor * inp_out_ids = build_inp_out_ids();
+ 
+     for (int il = 0; il < n_layer; ++il) {
++        res->t_layer_inp[il] = inpL;
++
+         ggml_tensor * inpSA = inpL;
+ 
+         // norm

@@ -1,0 +1,4 @@
+# Model files and downloaded/copied build inputs live on the GPU host.
+/models/
+/*.log
+/server-help.txt
