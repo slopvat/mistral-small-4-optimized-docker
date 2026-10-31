@@ -87,12 +87,17 @@ Mistral recommends temperature 0.7 for it, and 0 to 0.7 with `none`):
     curl localhost:8000/v1/chat/completions -H 'Content-Type: application/json' \
         -d '{"messages":[{"role":"user","content":"Hello"}],"reasoning_effort":"none"}'
 
-Without Compose:
+Without Compose (the GPU flag is required; without it the container exits
+with "no GPU is available to the container"):
 
     docker build --target q4 --secret id=hf_token,env=HF_TOKEN \
         -t mistral-small-4-optimized:q4 .
     docker run -d --device nvidia.com/gpu=all -p 8000:8000 \
         mistral-small-4-optimized:q4
+
+Use `--gpus all` instead of `--device nvidia.com/gpu=all` if Docker is set up
+with the older NVIDIA runtime hook instead of CDI. The model name for API
+requests is `mistral-small-4`.
 
 Configuration
 -------------

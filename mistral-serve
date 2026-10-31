@@ -50,7 +50,7 @@
 #       even split over the visible GPUs.
 #
 # Exit Statuses:
-# - 1: Bad settings.
+# - 1: Bad settings or no GPU available to the container.
 
 set -eu
 # SERVED_MODEL_NAME is split into words below; never expand globs.
@@ -119,6 +119,13 @@ if [ "$SPEC_TYPE" != "none" ]; then
         --spec-draft-model "$SPEC_DRAFT_MODEL" \
         --spec-draft-ngl 99 \
         "$@"
+fi
+
+# Without a GPU the NVIDIA runtime does not inject the driver library, and
+# llama-server dies with a hard to read loader error.
+if ldd "$(command -v llama-server)" 2>/dev/null | grep -q 'libcuda.so.1 => not found'; then
+    die "no GPU is available to the container; start it with" \
+        "--device nvidia.com/gpu=all (or --gpus all)"
 fi
 
 echo "+ llama-server --model $MODEL $*" >&2
