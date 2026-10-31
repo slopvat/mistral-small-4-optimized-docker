@@ -1,0 +1,9 @@
+{
+ "name": "image-q8-4-users-spec-none",
+ "users": 4,
+ "requests": 48,
+ "tokens": 24100,
+ "seconds": 105.3,
+ "total_tok_s": 228.8,
+ "per_user_tok_s": 57.2
+}
