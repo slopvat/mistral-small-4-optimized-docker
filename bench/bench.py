@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Usage: bench.py [--gpus IDS] [--draft GGUF] [--runs N] NAME MODEL [-- SERVER_ARG...]
+       bench.py [--runs N] --url URL NAME
 
 Start a llama-server container ("msl4-llama-tools" image) on the given GPUs,
 send a fixed set of greedy chat prompts and write the token-weighted decode
@@ -13,6 +14,9 @@ Options:
   --gpus IDS    Comma-separated GPU indexes for the container (default: 0).
   --draft GGUF  Drafter path relative to the models folder; adds it with
                 "-md". Use SERVER_ARG for the "--spec-type" and other flags.
+  --url URL     Benchmark the already running server at URL (e.g. one started
+                from an image) instead of starting a container; MODEL and
+                SERVER_ARG are not used.
   --runs N      Passes over the 12 prompts (default: 2); the first pass of
                 each server is a warm-up that is not counted.
 
@@ -26,6 +30,7 @@ AI Disclosure:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -66,9 +71,9 @@ PROMPTS = [
 MAX_TOKENS = 512
 
 
-def post(port, body):
+def post(base, body):
     req = urllib.request.Request(
-        f"http://127.0.0.1:{port}/v1/chat/completions",
+        f"{base}/v1/chat/completions",
         json.dumps(body).encode(), {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=600) as resp:
         return json.load(resp)
@@ -80,8 +85,9 @@ def main():
     ap.add_argument("--draft")
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--port", type=int, default=8090)
+    ap.add_argument("--url")
     ap.add_argument("name")
-    ap.add_argument("model")
+    ap.add_argument("model", nargs="?")
     ap.add_argument("server_args", nargs="*")
     args = ap.parse_args()
 
@@ -91,32 +97,36 @@ def main():
     results = os.path.join(here, "results")
     os.makedirs(results, exist_ok=True)
 
-    cname = f"msl4-bench-{args.name}"
-    subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
-    cmd = ["docker", "run", "-d", "--name", cname,
-           "-p", f"{args.port}:8080", "-v", f"{models}:/models:ro",
-           "--entrypoint", "llama-server"]
-    for gpu in args.gpus.split(","):
-        cmd += ["--device", f"nvidia.com/gpu={gpu}"]
-    cmd += ["msl4-llama-tools", "-m", f"/models/gguf/{args.model}",
-            "--host", "0.0.0.0", "--port", "8080", "-ngl", "99", "-fa", "on",
-            "--jinja", "--parallel", "1"]
-    if args.draft:
-        cmd += ["-md", f"/models/{args.draft}", "-ngld", "99"]
-    cmd += args.server_args
-    subprocess.run(cmd, check=True, capture_output=True)
+    base = args.url.rstrip("/") if args.url else \
+        f"http://127.0.0.1:{args.port}"
+    cname = None
+    if not args.url:
+        cname = "msl4-bench-" + re.sub(r"[^A-Za-z0-9_.-]", "-", args.name)
+        subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
+        cmd = ["docker", "run", "-d", "--name", cname,
+               "-p", f"{args.port}:8080", "-v", f"{models}:/models:ro",
+               "--entrypoint", "llama-server"]
+        for gpu in args.gpus.split(","):
+            cmd += ["--device", f"nvidia.com/gpu={gpu}"]
+        cmd += ["msl4-llama-tools", "-m", f"/models/gguf/{args.model}",
+                "--host", "0.0.0.0", "--port", "8080", "-ngl", "99",
+                "-fa", "on", "--jinja", "--parallel", "1"]
+        if args.draft:
+            cmd += ["-md", f"/models/{args.draft}", "-ngld", "99"]
+        cmd += args.server_args
+        subprocess.run(cmd, check=True, capture_output=True)
 
     try:
         start = time.time()
         while True:
             try:
-                urllib.request.urlopen(
-                    f"http://127.0.0.1:{args.port}/health", timeout=2)
+                urllib.request.urlopen(f"{base}/health", timeout=2)
                 break
             except Exception:
                 state = subprocess.run(
                     ["docker", "inspect", "-f", "{{.State.Running}}", cname],
-                    capture_output=True, text=True).stdout.strip()
+                    capture_output=True, text=True).stdout.strip() \
+                    if cname else "true"
                 if state != "true":
                     log = subprocess.run(["docker", "logs", "--tail", "30", cname],
                                          capture_output=True, text=True)
@@ -129,7 +139,7 @@ def main():
         rows = []
         for run in range(args.runs):
             for pname, prompt in PROMPTS:
-                data = post(args.port, {
+                data = post(base, {
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": MAX_TOKENS, "temperature": 0,
                     "reasoning_effort": "none", "cache_prompt": False})
@@ -162,11 +172,12 @@ def main():
               f"{summary['accept_rate']}, load {summary['load_s']} s")
         print("  " + "  ".join(f"{k}={v}" for k, v in summary["by_prompt"].items()))
     finally:
-        log = subprocess.run(["docker", "logs", cname],
-                             capture_output=True, text=True)
-        with open(os.path.join(results, args.name + ".log"), "w") as f:
-            f.write(log.stdout + log.stderr)
-        subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
+        if cname:
+            log = subprocess.run(["docker", "logs", cname],
+                                 capture_output=True, text=True)
+            with open(os.path.join(results, args.name + ".log"), "w") as f:
+                f.write(log.stdout + log.stderr)
+            subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,66 @@
+# Build and run one of the two images with "docker compose --profile q4 up -d"
+# or "docker compose --profile q8 up -d". Both listen on the same port, so run
+# only one at a time.
+#
+# AI Disclosure:
+# - Authorship: Autonomous
+# - Models: claude-sonnet-5-5 (Anthropic)
+# - Scope: Wrote the Compose file for building and running the images for the
+#   user's request for optimized Mistral Small 4 images.
+#
+# The models are baked into the images, which need no network access once
+# built. HF_TOKEN (from the environment or ".env") is only used while
+# building and is passed as a build secret, so it is not stored in the image.
+#
+# Every setting read by the mistral-serve entrypoint can be overridden from
+# the shell environment or ".env", e.g. "PARALLEL=4 docker compose --profile
+# q4 up -d". Variables that are not set are not passed to the container, so
+# the image's own defaults apply.
+
+x-mistral: &mistral
+  ipc: host
+  environment:
+    - CONTEXT_SIZE
+    - CUDA_VISIBLE_DEVICES
+    - MMPROJ
+    - MODEL
+    - PARALLEL
+    - PORT
+    - SERVED_MODEL_NAME
+    - SPEC_DRAFT_MODEL
+    - SPEC_DRAFT_N_MAX
+    - SPEC_TYPE
+    - TENSOR_SPLIT
+  ports:
+    - "${PORT:-8000}:${PORT:-8000}"
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+  restart: unless-stopped
+
+services:
+  mistral-q4:
+    <<: *mistral
+    profiles: [q4]
+    build:
+      context: .
+      target: q4
+      secrets: [hf_token]
+    image: mistral-small-4-optimized:q4
+
+  mistral-q8:
+    <<: *mistral
+    profiles: [q8]
+    build:
+      context: .
+      target: q8
+      secrets: [hf_token]
+    image: mistral-small-4-optimized:q8
+
+secrets:
+  hf_token:
+    environment: HF_TOKEN

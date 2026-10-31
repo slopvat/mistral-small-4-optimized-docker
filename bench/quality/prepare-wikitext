@@ -1,0 +1,31 @@
+#!/bin/sh
+# Usage: prepare-wikitext DEST
+#
+# Download the WikiText-2 (raw) test split and write it to DEST/wiki.test.raw
+# in the plain text form llama-perplexity expects. Needs HF_TOKEN for the
+# download only if rate-limited. Run on the GPU host.
+#
+# AI Disclosure:
+# - Authorship: Autonomous
+# - Models: claude-sonnet-5-5 (Anthropic)
+# - Scope: Wrote this script to get a corpus for comparing the quality of the
+#   4-bit quants for the user's request to pick the best one.
+# - References: https://huggingface.co/datasets/Salesforce/wikitext
+
+set -eu
+
+dest=$1
+mkdir -p "$dest"
+curl -fsSL ${HF_TOKEN:+-H "Authorization: Bearer $HF_TOKEN"} \
+    -o "$dest/test.parquet" \
+    https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-2-raw-v1/test-00000-of-00001.parquet
+docker run --rm --entrypoint sh -v "$(cd "$dest" && pwd):/data" \
+    msl4-llama-tools -c '
+    pip install --break-system-packages -q pyarrow 2>&1 | grep -v WARNING
+    python3 -I -c "
+import pyarrow.parquet as pq
+rows = pq.read_table(\"/data/test.parquet\").column(\"text\").to_pylist()
+open(\"/data/wiki.test.raw\", \"w\").write(\"\".join(rows))
+"'
+rm "$dest/test.parquet"
+wc -c "$dest/wiki.test.raw"

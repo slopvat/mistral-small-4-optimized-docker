@@ -3,7 +3,7 @@
 #
 # Convert the RedHat AI DFlash and DSpark drafters in MODELS_DIR/drafters to
 # BF16 GGUF files in MODELS_DIR/drafters-gguf using the "msl4-llama-tools"
-# image (Dockerfile.llama, "tools" target). The DFlash checkpoint uses the
+# image (Dockerfile, "tools" target). The DFlash checkpoint uses the
 # same "speculators" config layout as the DSpark one, but llama.cpp's DFlash
 # converter only understands the z-lab layout, so a copy of it is converted
 # with its architecture renamed so that the DSpark converter handles it.

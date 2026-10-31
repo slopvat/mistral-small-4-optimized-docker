@@ -1,0 +1,125 @@
+#!/bin/sh
+
+# Usage: mistral-serve [LLAMA_SERVER_ARGUMENT]...
+#
+# Start llama.cpp's OpenAI-compatible server for Mistral Small 4 119B with
+# the fastest configuration found for NVIDIA RTX PRO 6000 (Blackwell, SM120)
+# GPUs. Arguments are appended to the "llama-server" command line, so any
+# llama-server option can be added or overridden. The images bake the models
+# in under "/models" and run fully offline.
+#
+# AI Disclosure:
+# - Authorship: Autonomous
+# - Models: claude-sonnet-5-5 (Anthropic)
+# - Scope: Wrote the container entrypoint based on benchmarks run on 2x RTX
+#   PRO 6000 Blackwell Workstation Edition GPUs for the user's request for
+#   optimized Mistral Small 4 images.
+#
+# Environment Variables (and Defaults):
+#   An unset or empty variable falls back to the image's DEFAULT_<NAME>
+#   variable (e.g. DEFAULT_SPEC_DRAFT_N_MAX) when it has one, and then to the
+#   default shown here. The images only set the DEFAULT_* variables, so any
+#   setting can be overridden, or reset to the image's default by leaving it
+#   empty, without knowing the image's value.
+#
+#   CONTEXT_SIZE (262144)
+#       Total context in tokens, shared by all PARALLEL slots.
+#   CUDA_VISIBLE_DEVICES (all GPUs; GPU 0 in the 4-bit image)
+#       Comma-separated indexes of the GPUs to use.
+#   MMPROJ (the image's vision projector)
+#       Path of the multimodal projector. Set to "none" for text-only
+#       serving, which saves about 1 GB of VRAM.
+#   MODEL (the image's baked-in model)
+#       Path of the first shard of the target model.
+#   PARALLEL (1)
+#       Number of requests processed at once. Speculative decoding helps
+#       most with one; see README.md for the throughput under load.
+#   PORT (8000)
+#       Port the server listens on.
+#   SERVED_MODEL_NAME (mistral-small-4 and the image model's Hugging Face ID)
+#       Space-separated model names clients can use in requests.
+#   SPEC_DRAFT_MODEL (the baked-in DSpark drafter)
+#       Path of the speculative decoding drafter GGUF.
+#   SPEC_DRAFT_N_MAX (2 in the 4-bit image, 3 in the 8-bit image)
+#       Maximum number of tokens drafted per step.
+#   SPEC_TYPE (draft-dspark,ngram-mod)
+#       llama-server's "--spec-type". Set to "none" to disable speculative
+#       decoding.
+#   TENSOR_SPLIT
+#       Proportion of the model on each GPU, e.g. "1,1". The default is an
+#       even split over the visible GPUs.
+#
+# Exit Statuses:
+# - 1: Bad settings.
+
+set -eu
+# SERVED_MODEL_NAME is split into words below; never expand globs.
+set -f
+
+die()
+{
+    echo "${0##*/}: $*" >&2
+    exit 1
+}
+
+# Set the variable named by $1 to its own value, the image's DEFAULT_$1 value
+# or $2, whichever is the first that is not empty.
+setting()
+{
+    eval "value=\${$1:-\${DEFAULT_$1:-}}"
+    eval "$1=\${value:-\$2}"
+}
+
+setting MODEL ""
+setting MMPROJ /models/mmproj-BF16.gguf
+setting SERVED_MODEL_NAME mistral-small-4
+setting CONTEXT_SIZE 262144
+setting PARALLEL 1
+setting PORT 8000
+setting SPEC_TYPE draft-dspark,ngram-mod
+setting SPEC_DRAFT_MODEL /models/dspark-q8_0.gguf
+setting SPEC_DRAFT_N_MAX 3
+setting TENSOR_SPLIT ""
+setting CUDA_VISIBLE_DEVICES ""
+
+[ -n "$MODEL" ] || die "MODEL must be set to the path of the target model"
+
+# CUDA treats an empty CUDA_VISIBLE_DEVICES as "no GPUs"; treat it as unset
+# like the other settings instead.
+if [ -n "$CUDA_VISIBLE_DEVICES" ]; then
+    export CUDA_VISIBLE_DEVICES
+else
+    unset CUDA_VISIBLE_DEVICES
+fi
+
+# shellcheck disable=SC2086
+set -- \
+    --alias "$(echo $SERVED_MODEL_NAME | tr ' ' ',')" \
+    --host 0.0.0.0 \
+    --port "$PORT" \
+    --ctx-size "$CONTEXT_SIZE" \
+    --parallel "$PARALLEL" \
+    --gpu-layers 99 \
+    --flash-attn on \
+    --jinja \
+    "$@"
+
+if [ "$MMPROJ" != "none" ]; then
+    set -- --mmproj "$MMPROJ" "$@"
+fi
+
+if [ -n "$TENSOR_SPLIT" ]; then
+    set -- --tensor-split "$TENSOR_SPLIT" "$@"
+fi
+
+if [ "$SPEC_TYPE" != "none" ]; then
+    set -- \
+        --spec-type "$SPEC_TYPE" \
+        --spec-draft-n-max "$SPEC_DRAFT_N_MAX" \
+        --spec-draft-model "$SPEC_DRAFT_MODEL" \
+        --spec-draft-ngl 99 \
+        "$@"
+fi
+
+echo "+ llama-server --model $MODEL $*" >&2
+exec llama-server --model "$MODEL" "$@"
