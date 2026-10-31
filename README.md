@@ -270,11 +270,12 @@ Known Problems
   ends then show a thinking block and no answer. Measured on the q4 image
   with raw generations (the prompt is a short two-turn chat with a system
   prompt): 2 of 200 with speculative decoding and 4 of 200 without, so
-  speculation is not the cause, and the rate did not depend on temperature
+  speculation is not the cause, and 3 of 300 on the q8 image, so the quant
+  is not either, and the rate did not depend on temperature
   (0 to 0.8) or on whether the Responses or chat completions API was used.
   Retrying the request works; with `reasoning_effort: "none"` (the default
-  when a request does not send one) it cannot happen. Not tested: the q8
-  image, other quants and other system prompts. "bench/think-probe.py"
+  when a request does not send one) it cannot happen. Not tested: the
+  other quants and other system prompts. "bench/think-probe.py"
   reproduces it. No leaked `[THINK]` text was ever observed in 120 raw
   generations or 90 streamed requests.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
