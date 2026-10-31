@@ -263,6 +263,20 @@ Known Problems
   halves swapped, which did not happen with the projector on the CPU. Pass
   `--no-mmproj-offload` to run the projector on the CPU. See
   "bench/vision-matrix.sh".
+- **With `reasoning_effort: "high"` about 1 to 2% of replies have no
+  answer.** The model ends its turn (end-of-sequence token) before writing
+  the `[/THINK]` token, so everything it wrote, often including a finished
+  answer, is returned as reasoning and the visible content is empty. Front
+  ends then show a thinking block and no answer. Measured on the q4 image
+  with raw generations (the prompt is a short two-turn chat with a system
+  prompt): 2 of 200 with speculative decoding and 4 of 200 without, so
+  speculation is not the cause, and the rate did not depend on temperature
+  (0 to 0.8) or on whether the Responses or chat completions API was used.
+  Retrying the request works; with `reasoning_effort: "none"` (the default
+  when a request does not send one) it cannot happen. Not tested: the q8
+  image, other quants and other system prompts. "bench/think-probe.py"
+  reproduces it. No leaked `[THINK]` text was ever observed in 120 raw
+  generations or 90 streamed requests.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
   generation one CPU thread is busy and the GPU is at 97% utilization, so
   the expert matrix multiplications are not running on the CPU.
