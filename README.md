@@ -114,6 +114,7 @@ variable; the main ones are:
 | `PARALLEL` | 1 | Concurrent requests. Use `SPEC_TYPE=none` with more than 1. |
 | `CONTEXT_SIZE` | 262144 | Total context, shared by all slots. |
 | `MMPROJ` | the baked-in projector | `none` for text-only; saves about 1 GB. |
+| `REASONING_BLOCK_EOG` | `true` | Refuse the end-of-sequence token while a thinking block is open (see Known Problems). `false` turns it off. |
 | `CUDA_VISIBLE_DEVICES` | GPU 0 (q4), all (q8) | |
 | `TENSOR_SPLIT` | even | Proportions per GPU (q8). It made no difference to speed. |
 
@@ -263,21 +264,37 @@ Known Problems
   halves swapped, which did not happen with the projector on the CPU. Pass
   `--no-mmproj-offload` to run the projector on the CPU. See
   "bench/vision-matrix.sh".
-- **With `reasoning_effort: "high"` about 1 to 2% of replies have no
-  answer.** The model ends its turn (end-of-sequence token) before writing
-  the `[/THINK]` token, so everything it wrote, often including a finished
-  answer, is returned as reasoning and the visible content is empty. Front
-  ends then show a thinking block and no answer. Measured on the q4 image
-  with raw generations (the prompt is a short two-turn chat with a system
-  prompt): 2 of 200 with speculative decoding and 4 of 200 without, so
-  speculation is not the cause, and 3 of 300 on the q8 image, so the quant
-  is not either, and the rate did not depend on temperature
-  (0 to 0.8) or on whether the Responses or chat completions API was used.
-  Retrying the request works; with `reasoning_effort: "none"` (the default
-  when a request does not send one) it cannot happen. Not tested: the
-  other quants and other system prompts. "bench/think-probe.py"
-  reproduces it. No leaked `[THINK]` text was ever observed in 120 raw
-  generations or 90 streamed requests.
+- **With `reasoning_effort: "high"` about 1 to 2% of replies used to have no
+  answer; the images now prevent it.** The model sometimes ended its turn
+  (end-of-sequence token) before writing the `[/THINK]` token, so everything it
+  wrote, often including a finished answer, was returned as reasoning and the
+  visible content was empty. Front ends then showed a thinking block and no
+  answer. Measured on the unpatched q4 image with raw generations (a short
+  two-turn chat with a system prompt): 2 of 200 with speculative decoding and
+  4 of 200 without, and 3 of 300 on the q8 image; the rate did not depend on
+  temperature or API. On the worst prompt (the recorded "make the background
+  red" chat) it was 9 of 110 on q4 and 3 of 100 on q8. The model's probability
+  for the early stop is about 0.01% at those points, against 97-99.8% for
+  `[/THINK]`, so refusing it changes little else.
+  "patches/reasoning-block-eog.patch" adds a llama.cpp option,
+  `--reasoning-block-eog`, that refuses the end-of-sequence token while a
+  thinking block is open, and "mistral-serve" turns it on
+  (`REASONING_BLOCK_EOG=false` turns it off; a request can also send
+  `"reasoning_block_eog": false`). With it: 0 of 360 on q4 (0 of 60 on the
+  worst prompt alone) and 0 of 100 on q8, with no change in speed (207.7 against
+  210.4 tokens/s on q4; 172.3 against 174.2 on q8) or in the length of replies,
+  and no more thinking loops. It works with tools, chat completions and the
+  Responses API (a +18 bias on the end-of-sequence token made 10 of 10
+  replies stop inside the block without it and 0 of 10 with it, in each
+  path). The patch is not in upstream llama.cpp. "bench/eos-bias-check.py"
+  and "bench/grammar-probe.py" reproduce the tests.
+  A grammar that requires `[/THINK]` also works, but only without tools.
+- **Sometimes the model skips `[THINK]` and writes its reasoning as the
+  answer.** On a "how many trailing zeros does 100! have" prompt 11 to 42 of 50
+  replies (the rate varied between runs and days, on the unpatched image too)
+  had no parsed reasoning, the model reasoned in plain text and wrote a
+  literal `[/THINK]` in the middle of the visible answer. The patch does not
+  affect this and it was not investigated further.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
   generation one CPU thread is busy and the GPU is at 97% utilization, so
   the expert matrix multiplications are not running on the CPU.

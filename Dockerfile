@@ -57,11 +57,30 @@ RUN cmake -B build -DGGML_NATIVE=OFF -DGGML_CUDA=ON \
     && cp build/bin/llama-* /out/bin/ \
     && find build -name '*.so*' -exec cp -P {} /out/lib/ \;
 
-FROM docker.io/nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
+# Replies that end inside the thinking block: the model sometimes emits its
+# end-of-sequence token before "[/THINK]", and the server then files the whole
+# answer under reasoning. This patch lets the server refuse that token while a
+# thinking block is open ("--reasoning-block-eog"; the entrypoint turns it on).
+# It is applied on top of the finished build, so only the files it touches are
+# rebuilt and the stages below that use the converter and download the models
+# keep their cache.
+FROM build AS build-patched
+COPY patches/reasoning-block-eog.patch /tmp/
+WORKDIR /src
+RUN patch -p1 < /tmp/reasoning-block-eog.patch \
+    && cmake --build build --config Release -j"$(nproc)" \
+    && mkdir -p /out-patched/bin /out-patched/lib \
+    && cp build/bin/llama-server build/bin/llama-cli /out-patched/bin/ \
+    && find build -name '*.so*' -exec cp -P {} /out-patched/lib/ \;
+
+FROM docker.io/nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime-base
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# The "tools" target uses the build without the patch above.
+FROM runtime-base AS runtime
 COPY --from=build /out/lib/ /usr/local/lib/
 COPY --from=build /out/bin/llama-server /out/bin/llama-cli /usr/local/bin/
 COPY --from=build /src/COMMIT /usr/local/share/llama.cpp-commit
@@ -125,10 +144,10 @@ RUN --mount=type=secret,id=hf_token,env=HF_TOKEN \
         --include "UD-Q8_K_XL/*" --include "mmproj-BF16.gguf" \
     && rm -rf /models/.cache
 
-# The models come before the entrypoint script and settings so that changing
-# those only rebuilds the small last layers instead of copying the model
-# again.
-FROM runtime AS serve
+# The models come before llama.cpp, the entrypoint script and the settings so
+# that changing those only rebuilds the small last layers instead of copying
+# the model again.
+FROM runtime-base AS serve
 COPY --from=drafter /out/dspark-q8_0.gguf /models/dspark-q8_0.gguf
 
 FROM serve AS q4-models
@@ -138,6 +157,10 @@ FROM serve AS q8-models
 COPY --from=gguf-q8 /models/ /models/
 
 FROM q4-models AS q4
+COPY --from=build-patched /out-patched/lib/ /usr/local/lib/
+COPY --from=build-patched /out-patched/bin/ /usr/local/bin/
+COPY --from=build-patched /src/COMMIT /usr/local/share/llama.cpp-commit
+RUN ldconfig
 COPY mistral-serve /usr/local/bin/mistral-serve
 # One GPU holds the whole model; layer-splitting it over two only adds hops.
 ENV HF_HUB_OFFLINE=1 \
@@ -151,6 +174,10 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30m \
 ENTRYPOINT ["/usr/local/bin/mistral-serve"]
 
 FROM q8-models AS q8
+COPY --from=build-patched /out-patched/lib/ /usr/local/lib/
+COPY --from=build-patched /out-patched/bin/ /usr/local/bin/
+COPY --from=build-patched /src/COMMIT /usr/local/share/llama.cpp-commit
+RUN ldconfig
 COPY mistral-serve /usr/local/bin/mistral-serve
 ENV HF_HUB_OFFLINE=1 \
     DEFAULT_MODEL=/models/UD-Q8_K_XL/Mistral-Small-4-119B-2603-UD-Q8_K_XL-00001-of-00004.gguf \

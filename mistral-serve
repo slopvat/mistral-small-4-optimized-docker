@@ -36,6 +36,11 @@
 #       most with one; see README.md for the throughput under load.
 #   PORT (8000)
 #       Port the server listens on.
+#   REASONING_BLOCK_EOG (true)
+#       Refuse the end-of-sequence token while a thinking block is open. The
+#       model sometimes ends a reply right after writing its thinking, before
+#       "[/THINK]", and the server then shows the whole reply as reasoning
+#       with no answer. Set to "false" to turn the protection off.
 #   SERVED_MODEL_NAME (mistral-small-4 and the image model's Hugging Face ID)
 #       Space-separated model names clients can use in requests.
 #   SPEC_DRAFT_MODEL (the baked-in DSpark drafter)
@@ -76,6 +81,7 @@ setting SERVED_MODEL_NAME mistral-small-4
 setting CONTEXT_SIZE 262144
 setting PARALLEL 1
 setting PORT 8000
+setting REASONING_BLOCK_EOG true
 setting SPEC_TYPE draft-dspark,ngram-mod
 setting SPEC_DRAFT_MODEL /models/dspark-q8_0.gguf
 setting SPEC_DRAFT_N_MAX 3
@@ -83,6 +89,11 @@ setting TENSOR_SPLIT ""
 setting CUDA_VISIBLE_DEVICES ""
 
 [ -n "$MODEL" ] || die "MODEL must be set to the path of the target model"
+
+case "$REASONING_BLOCK_EOG" in
+true|false) ;;
+*) die "REASONING_BLOCK_EOG must be true or false" ;;
+esac
 
 # CUDA treats an empty CUDA_VISIBLE_DEVICES as "no GPUs"; treat it as unset
 # like the other settings instead.
@@ -103,6 +114,10 @@ set -- \
     --flash-attn on \
     --jinja \
     "$@"
+
+if [ "$REASONING_BLOCK_EOG" = true ]; then
+    set -- --reasoning-block-eog "$@"
+fi
 
 if [ "$MMPROJ" != "none" ]; then
     set -- --mmproj "$MMPROJ" "$@"

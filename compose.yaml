@@ -26,6 +26,7 @@ x-mistral: &mistral
     - MODEL
     - PARALLEL
     - PORT
+    - REASONING_BLOCK_EOG
     - SERVED_MODEL_NAME
     - SPEC_DRAFT_MODEL
     - SPEC_DRAFT_N_MAX
