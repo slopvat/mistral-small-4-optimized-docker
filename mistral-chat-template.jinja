@@ -1,13 +1,16 @@
 {#- Mistral Small 4's chat template as embedded in the Unsloth GGUF files
     (unsloth/Mistral-Small-4-119B-2603-GGUF), plus the generation-prompt block
-    at the end, which opens the thinking block for "high" reasoning effort.
+    at the end, which opens the thinking block for "high" reasoning effort, and
+    a system-prompt block that joins several leading system messages.
 
     AI Disclosure:
     - Authorship: AI-assisted
     - Models: claude-sonnet-5-5 (Anthropic)
     - Scope: Added the final block to the unmodified Unsloth template, so the
-      model cannot skip "[THINK]" and write its reasoning as the answer. The
-      rest is Mistral's template with Unsloth's fixes.
+      model cannot skip "[THINK]" and write its reasoning as the answer, and
+      rewrote the system-prompt block so that several system messages at the
+      start are joined instead of refused. The rest is Mistral's template
+      with Unsloth's fixes.
     - References: https://huggingface.co/unsloth/Mistral-Small-4-119B-2603-GGUF -#}
 {#- Unsloth template fixes #}
 {%- set yesterday_day = strftime_now("%d") %}
@@ -160,21 +163,43 @@
 
 {#- Handle system prompt if it exists. #}
 {#- System prompt supports text content or text chunks. #}
-{%- if messages[0]['role'] == 'system' %}
-    {{- '[SYSTEM_PROMPT]' -}}
-    {%- if messages[0]['content'] is string %}
-        {{- messages[0]['content'] -}}
-    {%- else %}        
-        {%- for block in messages[0]['content'] %}
-            {%- if block['type'] == 'text' %}
-                {{- block['text'] }}
+{#- Every system message at the start is joined into one system prompt with a
+    blank line between them. Clients differ: Open WebUI puts its own system
+    message in front of whatever the client sent first, and llama.cpp turns
+    the "developer" role Pi sends into "system", so the template used to see
+    two and refused the request. One message renders exactly as before. A
+    system message after the first user or assistant message is still an
+    error. #}
+{%- set lead = namespace(count=0, done=false, text='') %}
+{%- for message in messages %}
+    {%- if lead.done or message['role'] != 'system' %}
+        {%- set lead.done = true %}
+    {%- else %}
+        {%- set lead.count = lead.count + 1 %}
+        {%- set piece = namespace(text='') %}
+        {%- if message['content'] is string %}
+            {%- set piece.text = message['content'] %}
+        {%- else %}
+            {%- for block in message['content'] %}
+                {%- if block['type'] == 'text' %}
+                    {%- set piece.text = piece.text + block['text'] %}
+                {%- else %}
+                    {{- raise_exception('Only text chunks are supported in system message contents.') }}
+                {%- endif %}
+            {%- endfor %}
+        {%- endif %}
+        {%- if piece.text != '' %}
+            {%- if lead.text != '' %}
+                {%- set lead.text = lead.text + '\n\n' + piece.text %}
             {%- else %}
-                {{- raise_exception('Only text chunks are supported in system message contents.') }}
+                {%- set lead.text = piece.text %}
             {%- endif %}
-        {%- endfor %}
+        {%- endif %}
     {%- endif %}
-    {{- '[/SYSTEM_PROMPT]' -}}
-    {%- set loop_messages = messages[1:] %}
+{%- endfor %}
+{%- if lead.count > 0 %}
+    {{- '[SYSTEM_PROMPT]' + lead.text + '[/SYSTEM_PROMPT]' -}}
+    {%- set loop_messages = messages[lead.count:] %}
 {%- else %}
     {%- set loop_messages = messages %}
     {%- if default_system_message != '' %}

@@ -335,6 +335,21 @@ Known Problems
   natural rate is low (1 of 120 replies in the run that found it), so those
   counts alone prove little; the bias tests do. "bench/restart-bias-check.py"
   and "bench/tag-probability.py" reproduce them.
+- **Several system messages at the start used to be refused; the images now
+  join them.** The GGUF's template allowed one `system` message and only first,
+  so any client that sent two failed with "Only user, assistant and tool roles
+  are supported, got system" (HTTP 500, or 400 through Open WebUI). That
+  happens with Pi: with `"reasoning": true` Pi sends its instructions as a
+  `developer` message, llama.cpp turns that into `system`, and Open WebUI
+  inserts its own `system` message in front of it. "mistral-chat-template.jinja"
+  now joins every `system` message at the start into one system prompt, with a
+  blank line between them. A conversation with one system message renders
+  exactly as before (the same text for 11 of 11 layouts that already worked,
+  on llama.cpp's own template engine), and a `system` message after the first
+  user or assistant message is still refused. Requests with `[system,
+  developer, user]` and `[system, system, user]` now answer; "bench/role-check.py"
+  and "bench/server-battery.py" reproduce the tests, and so a Pi client needs no
+  `supportsDeveloperRole` setting.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
   generation one CPU thread is busy and the GPU is at 97% utilization, so
   the expert matrix multiplications are not running on the CPU.
