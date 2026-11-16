@@ -36,6 +36,12 @@
 #       most with one; see README.md for the throughput under load.
 #   PORT (8000)
 #       Port the server listens on.
+#   PREFILL_THINK (true)
+#       Start every "high" reasoning effort reply inside the thinking block
+#       by ending the prompt with "[THINK]" (the image's chat template, the
+#       GGUF's own template plus that one block). Without it the model
+#       sometimes skips "[THINK]" and writes its reasoning as the answer with
+#       a stray "[/THINK]" in it. "false" uses the GGUF's own template.
 #   REASONING_BLOCK_EOG (true)
 #       Refuse the end-of-sequence token while a thinking block is open. The
 #       model sometimes ends a reply right after writing its thinking, before
@@ -81,6 +87,7 @@ setting SERVED_MODEL_NAME mistral-small-4
 setting CONTEXT_SIZE 262144
 setting PARALLEL 1
 setting PORT 8000
+setting PREFILL_THINK true
 setting REASONING_BLOCK_EOG true
 setting SPEC_TYPE draft-dspark,ngram-mod
 setting SPEC_DRAFT_MODEL /models/dspark-q8_0.gguf
@@ -90,10 +97,13 @@ setting CUDA_VISIBLE_DEVICES ""
 
 [ -n "$MODEL" ] || die "MODEL must be set to the path of the target model"
 
-case "$REASONING_BLOCK_EOG" in
-true|false) ;;
-*) die "REASONING_BLOCK_EOG must be true or false" ;;
-esac
+for name in PREFILL_THINK REASONING_BLOCK_EOG; do
+    eval "value=\$$name"
+    case "$value" in
+    true|false) ;;
+    *) die "$name must be true or false" ;;
+    esac
+done
 
 # CUDA treats an empty CUDA_VISIBLE_DEVICES as "no GPUs"; treat it as unset
 # like the other settings instead.
@@ -114,6 +124,10 @@ set -- \
     --flash-attn on \
     --jinja \
     "$@"
+
+if [ "$PREFILL_THINK" = true ]; then
+    set -- --chat-template-file /usr/local/share/mistral-chat-template.jinja "$@"
+fi
 
 if [ "$REASONING_BLOCK_EOG" = true ]; then
     set -- --reasoning-block-eog "$@"

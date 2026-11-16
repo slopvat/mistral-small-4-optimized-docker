@@ -6,7 +6,8 @@ Raise the end-of-sequence token's logit by BIAS (default 12) so the model
 ends its reply early, far more often than it does by itself, and count the
 thinking-mode replies that end inside the thinking block, judged from the
 token ids ([THINK] is 34 and [/THINK] is 35; a bias that also ends the reply
-right after [/THINK] is not counted). Run against a server with
+right after [/THINK] is not counted). When the chat template ends the prompt
+with "[THINK]" (PREFILL_THINK), the block is open from the first token. Run against a server with
 "--reasoning-block-eog": the request field "reasoning_block_eog": false
 switches the protection off for the control arm. Arms: plain chat, chat with a
 tool, and the Responses API (which has no token ids, so only the average
@@ -40,6 +41,10 @@ def post(path, body):
     return json.load(urllib.request.urlopen(req, timeout=300))
 
 
+rendered = post("/apply-template", {"messages": [{"role": "user", "content": QUESTION}],
+                                     "reasoning_effort": "high"})["prompt"]
+prefilled = rendered.endswith("[THINK]")
+print("prompt ends with [THINK]:", prefilled)
 for arm in ("chat", "chat with tools", "responses"):
     for guard in (False, True):
         stuck = total = 0
@@ -61,7 +66,8 @@ for arm in ("chat", "chat with tools", "responses"):
                 r = post("/v1/chat/completions", body)
                 tokens = r["usage"]["completion_tokens"]
                 ids = [t["id"] for t in r["choices"][0]["logprobs"]["content"]]
-                bad = 34 in ids and 35 not in ids[len(ids) - 1 - ids[::-1].index(34):]
+                start = len(ids) - 1 - ids[::-1].index(34) if 34 in ids else 0
+                bad = (prefilled or 34 in ids) and 35 not in ids[start:]
             stuck += bad
             total += tokens
         what = "shorter than 30 tokens" if arm == "responses" else "ended inside the thinking block"

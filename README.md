@@ -114,6 +114,7 @@ variable; the main ones are:
 | `PARALLEL` | 1 | Concurrent requests. Use `SPEC_TYPE=none` with more than 1. |
 | `CONTEXT_SIZE` | 262144 | Total context, shared by all slots. |
 | `MMPROJ` | the baked-in projector | `none` for text-only; saves about 1 GB. |
+| `PREFILL_THINK` | `true` | End `high` effort prompts with `[THINK]` so the model cannot skip the thinking block (see Known Problems). `false` uses the GGUF's own template. |
 | `REASONING_BLOCK_EOG` | `true` | Refuse the end-of-sequence token while a thinking block is open (see Known Problems). `false` turns it off. |
 | `CUDA_VISIBLE_DEVICES` | GPU 0 (q4), all (q8) | |
 | `TENSOR_SPLIT` | even | Proportions per GPU (q8). It made no difference to speed. |
@@ -289,12 +290,22 @@ Known Problems
   path). The patch is not in upstream llama.cpp. "bench/eos-bias-check.py"
   and "bench/grammar-probe.py" reproduce the tests.
   A grammar that requires `[/THINK]` also works, but only without tools.
-- **Sometimes the model skips `[THINK]` and writes its reasoning as the
-  answer.** On a "how many trailing zeros does 100! have" prompt 11 to 42 of 50
-  replies (the rate varied between runs and days, on the unpatched image too)
-  had no parsed reasoning, the model reasoned in plain text and wrote a
-  literal `[/THINK]` in the middle of the visible answer. The patch does not
-  affect this and it was not investigated further.
+- **The model used to skip `[THINK]` sometimes; the images now prevent it.**
+  With `reasoning_effort: "high"`, on a "how many trailing zeros does 100! have"
+  prompt 11 to 42 of 50 replies (the rate varied between runs and days, on
+  the unpatched image too) had no parsed reasoning: the model reasoned in plain
+  text and wrote a literal `[/THINK]` in the middle of the visible answer.
+  "mistral-chat-template.jinja" is the GGUF's own chat template plus one block
+  that ends the prompt with `[THINK]` for `high` effort (not when the last
+  message is the assistant's, and not for `none`), so llama.cpp treats the
+  reply as starting inside the thinking block; "mistral-serve" uses it
+  (`PREFILL_THINK=false` uses the GGUF's own template). With it, 0 of 30 replies
+  on that prompt and 0 of 20 on the coding chat had no reasoning or a stray
+  tag, tool calls parsed (3 of 3), `none` effort and the Responses API were
+  unaffected, and speed was the same. The replies on that prompt are longer
+  (median 874 against 466 tokens) because the model now thinks where it used to
+  skip. The end-of-sequence guard above also covers the first token, because the
+  prompt now ends inside the block.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
   generation one CPU thread is busy and the GPU is at 97% utilization, so
   the expert matrix multiplications are not running on the CPU.

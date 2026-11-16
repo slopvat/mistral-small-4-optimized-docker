@@ -162,6 +162,7 @@ COPY --from=build-patched /out-patched/bin/ /usr/local/bin/
 COPY --from=build-patched /src/COMMIT /usr/local/share/llama.cpp-commit
 RUN ldconfig
 COPY mistral-serve /usr/local/bin/mistral-serve
+COPY mistral-chat-template.jinja /usr/local/share/mistral-chat-template.jinja
 # One GPU holds the whole model; layer-splitting it over two only adds hops.
 ENV HF_HUB_OFFLINE=1 \
     DEFAULT_MODEL=/models/UD-Q4_K_XL/Mistral-Small-4-119B-2603-UD-Q4_K_XL-00001-of-00003.gguf \
@@ -179,6 +180,7 @@ COPY --from=build-patched /out-patched/bin/ /usr/local/bin/
 COPY --from=build-patched /src/COMMIT /usr/local/share/llama.cpp-commit
 RUN ldconfig
 COPY mistral-serve /usr/local/bin/mistral-serve
+COPY mistral-chat-template.jinja /usr/local/share/mistral-chat-template.jinja
 ENV HF_HUB_OFFLINE=1 \
     DEFAULT_MODEL=/models/UD-Q8_K_XL/Mistral-Small-4-119B-2603-UD-Q8_K_XL-00001-of-00004.gguf \
     DEFAULT_SERVED_MODEL_NAME="mistral-small-4 unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q8_K_XL" \
