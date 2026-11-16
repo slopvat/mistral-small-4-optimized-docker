@@ -13,12 +13,13 @@ sent instead, with the first answer stored in the ways a chat front end might
 send it back: the plain answer, the answer prefixed by the thinking in a
 "[THINK]" block and the answer prefixed by the thinking in an HTML
 "<details>" block (Open WebUI's format for hidden thinking). With
---conversation, a two-turn conversation recorded from Open WebUI (system
-prompt "Keep answers simple and to the point.", reasoning_effort high, the
-first answer with its thinking, then "Make the background red.") is replayed
+--conversation, a two-turn conversation modeled on one recorded from Open
+WebUI (its system prompt "Keep answers simple and to the point.",
+reasoning_effort high and the two user turns; the first answer is a
+reconstruction, not the recorded text) is replayed
 through the chat completions and the Responses APIs (the first answer is sent
 back without its thinking, like Open WebUI does; --tools adds about 1.7k
-tokens of tool definitions, like Open WebUI's built-in tools), and each reply is
+tokens of invented tool definitions, sized like Open WebUI's built-in tools), and each reply is
 classified as normal, thinking only (the answer is inside the reasoning and
 the content is empty) or leaking "[THINK]". Every request in this mode carries
 its own "seed", drawn from a generator seeded with --seed (default 20261116)
