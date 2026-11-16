@@ -49,6 +49,12 @@
 #       with no answer. Set to "false" to turn the protection off.
 #   SERVED_MODEL_NAME (mistral-small-4 and the image model's Hugging Face ID)
 #       Space-separated model names clients can use in requests.
+#   SINGLE_THINK_BLOCK (true)
+#       Refuse the "[THINK]" token while a thinking block is open and after it
+#       has ended, so a reply has at most one. The model sometimes writes
+#       "[THINK]" where it meant "[/THINK]" (the neighbouring token), which
+#       restarts the thinking or opens a second block that clients show as
+#       text. "false" turns it off.
 #   SPEC_DRAFT_MODEL (the baked-in DSpark drafter)
 #       Path of the speculative decoding drafter GGUF.
 #   SPEC_DRAFT_N_MAX (2 in the 4-bit image, 3 in the 8-bit image)
@@ -89,6 +95,7 @@ setting PARALLEL 1
 setting PORT 8000
 setting PREFILL_THINK true
 setting REASONING_BLOCK_EOG true
+setting SINGLE_THINK_BLOCK true
 setting SPEC_TYPE draft-dspark,ngram-mod
 setting SPEC_DRAFT_MODEL /models/dspark-q8_0.gguf
 setting SPEC_DRAFT_N_MAX 3
@@ -97,7 +104,7 @@ setting CUDA_VISIBLE_DEVICES ""
 
 [ -n "$MODEL" ] || die "MODEL must be set to the path of the target model"
 
-for name in PREFILL_THINK REASONING_BLOCK_EOG; do
+for name in PREFILL_THINK REASONING_BLOCK_EOG SINGLE_THINK_BLOCK; do
     eval "value=\$$name"
     case "$value" in
     true|false) ;;
@@ -131,6 +138,10 @@ fi
 
 if [ "$REASONING_BLOCK_EOG" = true ]; then
     set -- --reasoning-block-eog "$@"
+fi
+
+if [ "$SINGLE_THINK_BLOCK" = true ]; then
+    set -- --reasoning-single-block "$@"
 fi
 
 if [ "$MMPROJ" != "none" ]; then

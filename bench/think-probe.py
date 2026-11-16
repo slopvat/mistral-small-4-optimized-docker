@@ -2,7 +2,7 @@
 """
 Usage: think-probe.py URL [TRIALS]
        think-probe.py --history URL [TRIALS]
-       think-probe.py --conversation URL [TRIALS] [--tools]
+       think-probe.py --conversation URL [TRIALS] [--tools] [--seed N] [--save FILE]
        think-probe.py --sampling URL [TRIALS]
 
 Send streaming chat requests with reasoning_effort unset, "none" and "high"
@@ -20,7 +20,10 @@ through the chat completions and the Responses APIs (the first answer is sent
 back without its thinking, like Open WebUI does; --tools adds about 1.7k
 tokens of tool definitions, like Open WebUI's built-in tools), and each reply is
 classified as normal, thinking only (the answer is inside the reasoning and
-the content is empty) or leaking "[THINK]". With --sampling, the same
+the content is empty) or leaking "[THINK]". Every request in this mode carries
+its own "seed", drawn from a generator seeded with --seed (default 20261116)
+and printed, so a bad reply can be replayed with the same request; --save
+appends every request, reply and output item type to FILE as JSON lines. With --sampling, the same
 conversation is sent through chat completions at several temperatures (and
 with the server's default) and the number of thinking-only replies is counted,
 along with how the bad replies ended.
@@ -32,6 +35,7 @@ AI Disclosure:
   "[THINK]" tag in the model's output, at the user's request.
 """
 import json
+import random
 import sys
 import urllib.request
 
@@ -149,7 +153,9 @@ def fake_tools():
     return tools
 
 
-def main_conversation(base, trials, use_tools):
+def main_conversation(base, trials, use_tools, master_seed, save):
+    seeds = random.Random(master_seed)
+    out = open(save, "a") if save else None
     chat_history = [
         {"role": "system", "content": SYSTEM},
         {"role": "user", "content": TURN1},
@@ -158,18 +164,27 @@ def main_conversation(base, trials, use_tools):
     tools = fake_tools() if use_tools else []
     for i in range(trials):
         body = {"messages": chat_history, "reasoning_effort": "high",
-                "max_tokens": 2000}
+                "max_tokens": 2000, "seed": seeds.getrandbits(31)}
         if tools:
             body["tools"] = [{"type": "function", "function": t}
                              for t in tools]
-        reply = post_json(base, "/v1/chat/completions",
-                          body)["choices"][0]["message"]
-        print(f"chat completions  trial={i} " + classify(
-            reply.get("reasoning_content") or "", reply.get("content") or ""))
+        choice = post_json(base, "/v1/chat/completions", body)["choices"][0]
+        reply = choice["message"]
+        calls = len(reply.get("tool_calls") or [])
+        print(f"chat completions  trial={i} seed={body['seed']} " + classify(
+            reply.get("reasoning_content") or "", reply.get("content") or "")
+            + f" tool_calls={calls}")
+        if out:
+            out.write(json.dumps({"api": "chat", "trial": i, "seed": body["seed"],
+                                  "tools": bool(tools), "finish": choice["finish_reason"],
+                                  "reasoning": reply.get("reasoning_content") or "",
+                                  "content": reply.get("content") or "",
+                                  "tool_calls": calls}) + "\n")
+            out.flush()
     for i in range(trials):
         body = {
             "instructions": SYSTEM, "reasoning": {"effort": "high"},
-            "max_output_tokens": 2000, "input": [
+            "max_output_tokens": 2000, "seed": seeds.getrandbits(31), "input": [
                 {"role": "user", "content": TURN1},
                 {"type": "message", "role": "assistant", "id": "msg_1",
                  "content": [{"type": "output_text", "text": ANSWER1}]},
@@ -178,12 +193,19 @@ def main_conversation(base, trials, use_tools):
             body["tools"] = [{"type": "function", **t} for t in tools]
         reply = post_json(base, "/v1/responses", body)
         reasoning = content = ""
+        kinds = [item["type"] for item in reply.get("output", [])]
         for item in reply.get("output", []):
             if item["type"] == "reasoning":
                 reasoning += "".join(c["text"] for c in item.get("content", []))
             elif item["type"] == "message":
                 content += "".join(c["text"] for c in item["content"])
-        print(f"responses         trial={i} " + classify(reasoning, content))
+        print(f"responses         trial={i} seed={body['seed']} " + classify(reasoning, content)
+              + f" items={','.join(kinds)}")
+        if out:
+            out.write(json.dumps({"api": "responses", "trial": i, "seed": body["seed"],
+                                  "tools": bool(tools), "items": kinds,
+                                  "reasoning": reasoning, "content": content}) + "\n")
+            out.flush()
 
 
 def main_sampling(base, trials):
@@ -214,10 +236,18 @@ def main():
                       int(sys.argv[3]) if len(sys.argv) > 3 else 20)
         return
     if sys.argv[1] == "--conversation":
-        trials = [a for a in sys.argv[3:] if a.isdigit()]
+        args = sys.argv[3:]
+        master = 20261116
+        save = None
+        if "--seed" in args:
+            master = int(args[args.index("--seed") + 1])
+        if "--save" in args:
+            save = args[args.index("--save") + 1]
+        trials = [a for a in args if a.isdigit() and args[args.index(a) - 1] != "--seed"]
+        print(f"master seed {master}")
         main_conversation(sys.argv[2].rstrip("/"),
                           int(trials[0]) if trials else 5,
-                          "--tools" in sys.argv)
+                          "--tools" in args, master, save)
         return
     if sys.argv[1] == "--history":
         main_history(sys.argv[2].rstrip("/"),

@@ -17,6 +17,13 @@ field "reasoning_block_eog" is set. Unlike a grammar, this also works for
 requests that have tools (a request grammar is rejected with tools, and the
 server-wide grammar is replaced by the tool-call grammar). Default off.
 
+The same sampler also gets "--reasoning-single-block" (env
+LLAMA_ARG_REASONING_SINGLE_BLOCK, request field "reasoning_single_block"):
+it refuses the single-token start tag while a block is open and after it has
+ended. The model sometimes slips from "[/THINK]" (97% at the position) to the
+neighbouring "[THINK]" (2%), which restarts the reasoning inside the block or
+opens a second block after it that the server shows as text. Default off.
+
 Apply to llama.cpp v0.8.0 with "patch -p1".
 
 AI Disclosure:
@@ -29,8 +36,8 @@ AI Disclosure:
 
 diff -ruN a/common/arg.cpp b/common/arg.cpp
 --- a/common/arg.cpp	2026-10-28 06:30:38.000000000 -0500
-+++ b/common/arg.cpp	2026-11-15 18:38:51.491196745 -0600
-@@ -3781,6 +3781,14 @@
++++ b/common/arg.cpp	2026-11-15 22:56:27.406601656 -0600
+@@ -3781,6 +3781,22 @@
          }
      ).set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_COMPLETION, LLAMA_EXAMPLE_CLI}).set_env("LLAMA_ARG_THINK_BUDGET"));
      add_opt(common_arg(
@@ -42,135 +49,170 @@ diff -ruN a/common/arg.cpp b/common/arg.cpp
 +        }
 +    ).set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_COMPLETION, LLAMA_EXAMPLE_CLI}).set_env("LLAMA_ARG_REASONING_BLOCK_EOG"));
 +    add_opt(common_arg(
++        {"--reasoning-single-block"},
++        {"--no-reasoning-single-block"},
++        "refuse the start-of-thinking tag while a reasoning block is open and after it has ended, so a reply has at most one reasoning block; only for single-token tags (default: disabled)",
++        [](common_params & params, bool value) {
++            params.sampling.reasoning_single_block = value;
++        }
++    ).set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_COMPLETION, LLAMA_EXAMPLE_CLI}).set_env("LLAMA_ARG_REASONING_SINGLE_BLOCK"));
++    add_opt(common_arg(
          {"--reasoning-budget-message"}, "MESSAGE",
          "message injected before the end-of-thinking tag when reasoning budget is exhausted (default: none)",
          [](common_params & params, const std::string & value) {
 diff -ruN a/common/common.h b/common/common.h
 --- a/common/common.h	2026-10-28 06:30:38.000000000 -0500
-+++ b/common/common.h	2026-11-15 18:38:51.483196676 -0600
-@@ -297,6 +297,7 @@
++++ b/common/common.h	2026-11-15 22:56:27.406601656 -0600
+@@ -297,6 +297,8 @@
      std::vector<llama_token>  reasoning_budget_forced;         // forced sequence (message + first end tag)
      std::string               reasoning_budget_message;        // message injected before end tag when budget exhausted
      bool                      reasoning_control = false;       // create the budget sampler on demand so reasoning can be ended at runtime
 +    bool                      reasoning_block_eog = false;     // refuse end-of-generation tokens while a reasoning block is open
++    bool                      reasoning_single_block = false;  // refuse the start tag while a reasoning block is open and after it has ended (single-token start tags only)
  
      bool backend_sampling = false;
  
 diff -ruN a/common/reasoning-budget.cpp b/common/reasoning-budget.cpp
 --- a/common/reasoning-budget.cpp	2026-10-28 06:30:38.000000000 -0500
-+++ b/common/reasoning-budget.cpp	2026-11-15 18:38:51.483196676 -0600
-@@ -55,6 +55,7 @@
++++ b/common/reasoning-budget.cpp	2026-11-15 22:56:11.254466026 -0600
+@@ -55,6 +55,8 @@
      token_matcher start_matcher;
      token_matcher end_matcher;
      llama_tokens forced_tokens;
-+    llama_tokens blocked_tokens; // may not be sampled while the reasoning block is open
++    llama_tokens blocked_open;   // may not be sampled while the reasoning block is open
++    llama_tokens blocked_closed; // may not be sampled once the reasoning block has ended
  
      int32_t budget;           // maximum tokens in reasoning block
      int32_t remaining;        // tokens remaining in budget
-@@ -166,6 +167,23 @@
+@@ -163,9 +165,35 @@
+     }
+ }
+ 
++static void common_reasoning_budget_block(llama_token_data_array * cur_p, const llama_tokens & tokens) {
++    for (const llama_token id : tokens) {
++        if (id >= 0 && (size_t) id < cur_p->size && cur_p->data[id].id == id) {
++            cur_p->data[id].logit = -INFINITY;
++            continue;
++        }
++        for (size_t i = 0; i < cur_p->size; i++) {
++            if (cur_p->data[i].id == id) {
++                cur_p->data[i].logit = -INFINITY;
++                break;
++            }
++        }
++    }
++}
++
  static void common_reasoning_budget_apply(struct llama_sampler * smpl, llama_token_data_array * cur_p) {
      auto * ctx = (common_reasoning_budget_ctx *) smpl->ctx;
  
 +    if (ctx->state == REASONING_BUDGET_COUNTING || ctx->state == REASONING_BUDGET_WAITING_UTF8) {
 +        // the reasoning block is open: the blocked tokens (end of generation) would end the reply inside it
-+        for (const llama_token id : ctx->blocked_tokens) {
-+            if (id >= 0 && (size_t) id < cur_p->size && cur_p->data[id].id == id) {
-+                cur_p->data[id].logit = -INFINITY;
-+                continue;
-+            }
-+            for (size_t i = 0; i < cur_p->size; i++) {
-+                if (cur_p->data[i].id == id) {
-+                    cur_p->data[i].logit = -INFINITY;
-+                    break;
-+                }
-+            }
-+        }
++        common_reasoning_budget_block(cur_p, ctx->blocked_open);
++        return;
++    }
++
++    if (ctx->state == REASONING_BUDGET_DONE) {
++        common_reasoning_budget_block(cur_p, ctx->blocked_closed);
 +        return;
 +    }
 +
      if (ctx->state != REASONING_BUDGET_FORCING) {
          // passthrough — don't modify logits
          return;
-@@ -198,7 +216,7 @@
+@@ -198,7 +226,7 @@
  static struct llama_sampler * common_reasoning_budget_init_state(
          const struct llama_vocab * vocab, const std::vector<llama_tokens> & start_seqs,
          const std::vector<llama_tokens> & end_seqs, const llama_tokens & forced_tokens,
 -        int32_t budget, common_reasoning_budget_state initial_state);
-+        int32_t budget, common_reasoning_budget_state initial_state, const llama_tokens & blocked_tokens);
++        int32_t budget, common_reasoning_budget_state initial_state, const llama_tokens & blocked_open, const llama_tokens & blocked_closed);
  
  static struct llama_sampler * common_reasoning_budget_clone(const struct llama_sampler * smpl);
  
-@@ -236,7 +254,8 @@
+@@ -236,7 +264,9 @@
          const std::vector<llama_tokens> & end_seqs,
          const llama_tokens              & forced_tokens,
          int32_t                           budget,
 -        common_reasoning_budget_state     initial_state) {
 +        common_reasoning_budget_state     initial_state,
-+        const llama_tokens              & blocked_tokens) {
++        const llama_tokens              & blocked_open,
++        const llama_tokens              & blocked_closed) {
      // promote COUNTING with budget <= 0 to FORCING
      if (initial_state == REASONING_BUDGET_COUNTING && budget <= 0) {
          initial_state = REASONING_BUDGET_FORCING;
-@@ -249,6 +268,7 @@
+@@ -249,6 +279,8 @@
              /* .start_matcher = */ token_matcher(start_seqs),
              /* .end_matcher   = */ token_matcher(end_seqs),
              /* .forced_tokens = */ forced_tokens,
-+            /* .blocked_tokens= */ blocked_tokens,
++            /* .blocked_open  = */ blocked_open,
++            /* .blocked_closed= */ blocked_closed,
              /* .budget        = */ budget,
              /* .remaining     = */ budget,
              /* .state         = */ initial_state,
-@@ -264,8 +284,9 @@
+@@ -264,8 +296,10 @@
          const std::vector<llama_tokens> & end_seqs,
          const llama_tokens              & forced_tokens,
          int32_t                           budget,
 -        common_reasoning_budget_state     initial_state) {
 -    return common_reasoning_budget_init_state(vocab, start_seqs, end_seqs, forced_tokens, budget, initial_state);
 +        common_reasoning_budget_state     initial_state,
-+        const llama_tokens              & blocked_tokens) {
-+    return common_reasoning_budget_init_state(vocab, start_seqs, end_seqs, forced_tokens, budget, initial_state, blocked_tokens);
++        const llama_tokens              & blocked_open,
++        const llama_tokens              & blocked_closed) {
++    return common_reasoning_budget_init_state(vocab, start_seqs, end_seqs, forced_tokens, budget, initial_state, blocked_open, blocked_closed);
  }
  
  common_reasoning_budget_state common_reasoning_budget_get_state(const struct llama_sampler * smpl) {
 diff -ruN a/common/reasoning-budget.h b/common/reasoning-budget.h
 --- a/common/reasoning-budget.h	2026-10-28 06:30:38.000000000 -0500
-+++ b/common/reasoning-budget.h	2026-11-15 18:38:27.562989333 -0600
-@@ -32,6 +32,10 @@
++++ b/common/reasoning-budget.h	2026-11-15 22:56:11.254466026 -0600
+@@ -32,6 +32,12 @@
  //   forced_tokens  - token sequence forced when budget expires
  //   budget         - max tokens allowed in the reasoning block
  //   initial_state  - initial state
-+//   blocked_tokens - tokens that may not be sampled while the reasoning block is
++//   blocked_open   - tokens that may not be sampled while the reasoning block is
 +//                    open (COUNTING and WAITING_UTF8), e.g. the end-of-generation
 +//                    tokens: a model that emits one before the end tag leaves its
 +//                    answer inside the reasoning
++//   blocked_closed - tokens that may not be sampled once the block has ended
++//                    (DONE), e.g. a single-token start tag, to allow one block
  //
  struct llama_sampler * common_reasoning_budget_init(
          const struct llama_vocab        * vocab,
-@@ -39,7 +43,8 @@
+@@ -39,7 +45,9 @@
          const std::vector<llama_tokens> & end_seqs,
          const llama_tokens              & forced_tokens,
          int32_t                           budget,
 -        common_reasoning_budget_state     initial_state = REASONING_BUDGET_IDLE);
 +        common_reasoning_budget_state     initial_state  = REASONING_BUDGET_IDLE,
-+        const llama_tokens              & blocked_tokens = {});
++        const llama_tokens              & blocked_open   = {},
++        const llama_tokens              & blocked_closed = {});
  
  common_reasoning_budget_state common_reasoning_budget_get_state(const struct llama_sampler * smpl);
  
 diff -ruN a/common/sampling.cpp b/common/sampling.cpp
 --- a/common/sampling.cpp	2026-10-28 06:30:38.000000000 -0500
-+++ b/common/sampling.cpp	2026-11-15 18:38:51.491196745 -0600
-@@ -312,13 +312,25 @@
++++ b/common/sampling.cpp	2026-11-15 22:56:27.406601656 -0600
+@@ -312,13 +312,33 @@
      }
  
      // reasoning budget sampler (skip when budget is unlimited unless a lazy grammar is active, which needs rbudget for thinking-block suppression)
 -    if (!params.reasoning_budget_start.empty() && !params.reasoning_budget_end.empty() && (params.grammar_lazy || params.reasoning_budget_tokens >= 0 || params.reasoning_control)) {
-+    if (!params.reasoning_budget_start.empty() && !params.reasoning_budget_end.empty() && (params.grammar_lazy || params.reasoning_budget_tokens >= 0 || params.reasoning_control || params.reasoning_block_eog)) {
++    if (!params.reasoning_budget_start.empty() && !params.reasoning_budget_end.empty() && (params.grammar_lazy || params.reasoning_budget_tokens >= 0 || params.reasoning_control || params.reasoning_block_eog || params.reasoning_single_block)) {
 +        // a model that ends its reply inside the reasoning block leaves the answer in the reasoning
-+        llama_tokens blocked;
++        llama_tokens blocked_open;
++        llama_tokens blocked_closed;
 +        if (params.reasoning_block_eog) {
 +            for (llama_token id = 0; id < llama_vocab_n_tokens(vocab); id++) {
 +                if (llama_vocab_is_eog(vocab, id)) {
-+                    blocked.push_back(id);
++                    blocked_open.push_back(id);
 +                }
 +            }
++        }
++        // a model can slip from the end tag to the neighbouring start tag, which restarts the reasoning
++        // inside the block or opens a second one after it; a multi-token start tag cannot be blocked
++        if (params.reasoning_single_block && params.reasoning_budget_start.size() == 1) {
++            blocked_open.push_back(params.reasoning_budget_start.front());
++            blocked_closed.push_back(params.reasoning_budget_start.front());
 +        }
 +
          rbudget = common_reasoning_budget_init(
@@ -181,13 +223,14 @@ diff -ruN a/common/sampling.cpp b/common/sampling.cpp
 -            params.reasoning_budget_tokens < 0 ? INT_MAX : params.reasoning_budget_tokens);
 +            params.reasoning_budget_tokens < 0 ? INT_MAX : params.reasoning_budget_tokens,
 +            REASONING_BUDGET_IDLE,
-+            blocked);
++            blocked_open,
++            blocked_closed);
  
          for (const auto & token : prefill_tokens) {
              llama_sampler_accept(rbudget, token);
 diff -ruN a/tests/test-reasoning-budget.cpp b/tests/test-reasoning-budget.cpp
 --- a/tests/test-reasoning-budget.cpp	2026-10-28 06:30:38.000000000 -0500
-+++ b/tests/test-reasoning-budget.cpp	2026-11-15 18:39:03.271298860 -0600
++++ b/tests/test-reasoning-budget.cpp	2026-11-15 22:56:27.410601690 -0600
 @@ -8,6 +8,7 @@
  #undef NDEBUG
  #endif
@@ -196,7 +239,7 @@ diff -ruN a/tests/test-reasoning-budget.cpp b/tests/test-reasoning-budget.cpp
  #include <cmath>
  #include <cstddef>
  #include <cstdio>
-@@ -170,6 +171,52 @@
+@@ -170,6 +171,76 @@
      llama_sampler_free(sampler);
  }
  
@@ -222,7 +265,7 @@ diff -ruN a/tests/test-reasoning-budget.cpp b/tests/test-reasoning-budget.cpp
 +    const llama_tokens blocked = {2, 7};
 +    const llama_token max_token = 110;
 +
-+    auto * sampler = common_reasoning_budget_init(nullptr, {start}, {end}, {101}, INT_MAX, REASONING_BUDGET_IDLE, blocked);
++    auto * sampler = common_reasoning_budget_init(nullptr, {start}, {end}, {101}, INT_MAX, REASONING_BUDGET_IDLE, blocked, {});
 +
 +    GGML_ASSERT(count_finite(sampler, max_token) == (size_t) max_token + 1 && "tokens blocked before the block opens");
 +
@@ -246,49 +289,80 @@ diff -ruN a/tests/test-reasoning-budget.cpp b/tests/test-reasoning-budget.cpp
 +    llama_sampler_free(sampler);
 +}
 +
++static void test_reasoning_budget_single_block() {
++    const std::vector<llama_token> start = {100};
++    const std::vector<llama_token> end = {101};
++    const llama_tokens blocked_open = {2, 100};
++    const llama_tokens blocked_closed = {100};
++    const llama_token max_token = 110;
++
++    auto * sampler = common_reasoning_budget_init(nullptr, {start}, {end}, {101}, INT_MAX, REASONING_BUDGET_IDLE, blocked_open, blocked_closed);
++
++    // before the block: the start tag can still be sampled, it is how the block opens
++    GGML_ASSERT(count_finite(sampler, max_token) == (size_t) max_token + 1 && "tokens blocked before the block opens");
++
++    llama_sampler_accept(sampler, 100);
++    GGML_ASSERT(count_finite(sampler, max_token) == (size_t) max_token - 1 && "start tag and end of generation not blocked inside the block");
++
++    llama_sampler_accept(sampler, 101);
++    GGML_ASSERT(count_finite(sampler, max_token) == (size_t) max_token && "only the start tag must be blocked after the block");
++
++    llama_sampler_accept(sampler, 50);
++    GGML_ASSERT(count_finite(sampler, max_token) == (size_t) max_token && "start tag allowed after the block");
++
++    llama_sampler_free(sampler);
++}
++
  static void test_reasoning_budget_clone_mid_forcing() {
      const std::vector<llama_token> start = {100};
      const std::vector<llama_token> end = {101};
-@@ -494,8 +541,9 @@
+@@ -494,8 +565,10 @@
      test_reasoning_budget_clone_mid_forcing();
      test_reasoning_budget_force_manual();
      test_reasoning_budget_end_match();
 +    test_reasoning_budget_blocked_tokens();
++    test_reasoning_budget_single_block();
  
 -    printf("OK (12 tests passed)\n");
-+    printf("OK (13 tests passed)\n");
++    printf("OK (14 tests passed)\n");
  
      printf("Testing UTF-8 boundary detection... ");
      test_utf8_boundary_detection();
 diff -ruN a/tools/server/README.md b/tools/server/README.md
 --- a/tools/server/README.md	2026-10-28 06:30:38.000000000 -0500
-+++ b/tools/server/README.md	2026-11-15 18:38:51.499196814 -0600
-@@ -237,6 +237,7 @@
++++ b/tools/server/README.md	2026-11-15 22:56:27.410601690 -0600
+@@ -237,6 +237,8 @@
  | `-rea, --reasoning [on\|off\|auto]` | Use reasoning/thinking in the chat ('on', 'off', or 'auto', default: 'auto' (detect from template))<br/>(env: LLAMA_ARG_REASONING) |
  | `--reasoning-effort LEVEL` | reasoning effort level given to the chat template: 'default' to keep the template default,<br/>or a level such as 'minimal', 'low', 'medium', 'high', 'xhigh' or 'max' (default: default)<br/>(env: LLAMA_ARG_REASONING_EFFORT) |
  | `--reasoning-budget N` | token budget for thinking: -1 for unrestricted, 0 for immediate end, N>0 for token budget (default: -1)<br/>(env: LLAMA_ARG_THINK_BUDGET) |
 +| `--reasoning-block-eog, --no-reasoning-block-eog` | refuse the end-of-generation token while a reasoning block is open, so a reply cannot end before the end-of-thinking tag (default: disabled)<br/>(env: LLAMA_ARG_REASONING_BLOCK_EOG) |
++| `--reasoning-single-block, --no-reasoning-single-block` | refuse the start-of-thinking tag while a reasoning block is open and after it has ended, so a reply has at most one reasoning block; only for single-token tags (default: disabled)<br/>(env: LLAMA_ARG_REASONING_SINGLE_BLOCK) |
  | `--reasoning-budget-message MESSAGE` | message injected before the end-of-thinking tag when reasoning budget is exhausted (default: none)<br/>(env: LLAMA_ARG_THINK_BUDGET_MESSAGE) |
  | `--reasoning-preserve, --no-reasoning-preserve` | preserve reasoning trace in the full history, not just the last assistant message (default: template default)<br/>compatible with certain templates having 'supports_preserve_reasoning' capability<br/>example: https://docs.z.ai/guides/capabilities/thinking-mode#preserved-thinking<br/>(env: LLAMA_ARG_REASONING_PRESERVE) |
  | `--chat-template JINJA_TEMPLATE` | set custom jinja chat template (default: template taken from model's metadata)<br/>if suffix/prefix are specified, template will be disabled<br/>only commonly used templates are accepted (unless --jinja is set before this flag):<br/>list of built-in templates:<br/>bailing, bailing-think, bailing2, chatglm3, chatglm4, chatml, command-r, deepseek, deepseek-ocr, deepseek2, deepseek3, exaone-moe, exaone3, exaone4, falcon3, gemma, gigachat, glmedge, gpt-oss, granite, granite-4.0, granite-4.1, grok-2, hunyuan-dense, hunyuan-moe, hunyuan-vl, kimi-k2, llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4, megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken, mistral-v7, mistral-v7-tekken, monarch, openchat, orion, pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open, vicuna, vicuna-orca, yandex, zephyr<br/>(env: LLAMA_ARG_CHAT_TEMPLATE) |
-@@ -1450,6 +1451,8 @@
+@@ -1450,6 +1452,10 @@
  
  `reasoning_format`: The reasoning format to be parsed. If set to `none`, it will output the raw generated text.
  
 +`reasoning_block_eog`: Refuses the end-of-generation token while a reasoning block is open, so the reply cannot end before the end-of-thinking tag. Defaults to the `--reasoning-block-eog` setting.
++
++`reasoning_single_block`: Refuses the start-of-thinking tag while a reasoning block is open and after it has ended. Defaults to the `--reasoning-single-block` setting.
 +
  `reasoning_control`: Arms realtime reasoning control for this completion so it can be ended early via `/v1/chat/completions/control`. Defaults to `false`.
  
  `parallel_tool_calls` : Whether to enable parallel/multiple tool calls (only supported on some models, verification is based on jinja template).
 diff -ruN a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
 --- a/tools/server/server-schema.cpp	2026-10-28 06:30:38.000000000 -0500
-+++ b/tools/server/server-schema.cpp	2026-11-15 18:38:51.491196745 -0600
-@@ -351,6 +351,9 @@
++++ b/tools/server/server-schema.cpp	2026-11-15 22:56:27.406601656 -0600
+@@ -351,6 +351,12 @@
      add((new field_bool("reasoning_control", params.sampling.reasoning_control))
          ->set_desc("Create the budget sampler on demand so reasoning can be ended at runtime"));
  
 +    add((new field_bool("reasoning_block_eog", params.sampling.reasoning_block_eog))
 +        ->set_desc("Refuse the end-of-generation token while a reasoning block is open"));
++
++    add((new field_bool("reasoning_single_block", params.sampling.reasoning_single_block))
++        ->set_desc("Refuse the start-of-thinking tag while a reasoning block is open and after it has ended"));
 +
      add((new field_num("reasoning_budget_tokens", params.sampling.reasoning_budget_tokens))
          ->set_hard_limits(-1, INT32_MAX)

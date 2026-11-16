@@ -2,7 +2,7 @@
 """
 Usage: grammar-probe.py URL TRIALS LABEL OUTPUT.jsonl [--grammar FILE]
                         [--tools] [--temperature T] [--max-tokens N]
-                        [--prompt N] [--field KEY=JSON]...
+                        [--prompt N] [--field KEY=JSON]... [--seed N]
 
 Send TRIALS thinking-mode chat requests (reasoning_effort "high") to a
 llama-server, rotating over a few prompts, and count the replies that end
@@ -10,7 +10,9 @@ with reasoning but no answer, which is what happens when the model emits its
 end-of-sequence token before [/THINK]. With --grammar, the file's contents
 are sent as the request's "grammar". With --prompt, every trial uses prompt
 N. Each --field adds KEY with the JSON value to the request body (e.g.
---field reasoning_block_eog=false). Each trial, including the full reasoning and answer text, is appended to
+--field reasoning_block_eog=false). Every request carries its own "seed",
+drawn from a generator seeded with --seed (default 20261116) and written to
+the result, so any reply can be repeated. Each trial, including the full reasoning and answer text, is appended to
 OUTPUT.jsonl.
 
 AI Disclosure:
@@ -21,6 +23,7 @@ AI Disclosure:
 """
 import argparse
 import json
+import random
 import time
 import urllib.request
 
@@ -58,11 +61,13 @@ def main():
     ap.add_argument("--tools", action="store_true")
     ap.add_argument("--prompt", type=int)
     ap.add_argument("--field", action="append", default=[])
+    ap.add_argument("--seed", type=int, default=20261116)
     ap.add_argument("--temperature", type=float)
     ap.add_argument("--max-tokens", type=int, default=6000)
     args = ap.parse_args()
     grammar = open(args.grammar).read() if args.grammar else None
     bad = errors = 0
+    seeds = random.Random(args.seed)
     with open(args.output, "a") as out:
         for i in range(args.trials):
             index = args.prompt if args.prompt is not None else i % len(CHATS)
@@ -72,6 +77,7 @@ def main():
                 body["temperature"] = args.temperature
             if grammar:
                 body["grammar"] = grammar
+            body["seed"] = seeds.getrandbits(31)
             for field in args.field:
                 key, _, value = field.partition("=")
                 body[key] = json.loads(value)
@@ -105,7 +111,7 @@ def main():
                    "completion_tokens": reply["usage"]["completion_tokens"],
                    "predicted_per_second": t.get("predicted_per_second"),
                    "draft_n": t.get("draft_n"), "draft_n_accepted": t.get("draft_n_accepted"),
-                   "seconds": round(time.time() - start, 2),
+                   "seed": body["seed"], "seconds": round(time.time() - start, 2),
                    "reasoning": reasoning, "content": content}
             if unclosed or not content and not calls:
                 rec["tail"] = (reasoning or content)[-300:]

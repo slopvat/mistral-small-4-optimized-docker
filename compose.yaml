@@ -28,6 +28,7 @@ x-mistral: &mistral
     - PORT
     - PREFILL_THINK
     - REASONING_BLOCK_EOG
+    - SINGLE_THINK_BLOCK
     - SERVED_MODEL_NAME
     - SPEC_DRAFT_MODEL
     - SPEC_DRAFT_N_MAX

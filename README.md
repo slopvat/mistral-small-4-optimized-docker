@@ -74,6 +74,23 @@ Build the images (this is the only step that needs network access):
 The q4 build downloads 70 GiB and the q8 build 124 GiB. The token in ".env" is only used during the
 build and is passed as a build secret, so it never ends up in an image.
 
+The Dockerfile pins its base images and the Dockerfile frontend by digest, so
+the registry is only needed when they are not on the host. BuildKit still
+looks them up first, and with the registry unreachable that costs about 3
+minutes of timeouts per lookup before it uses the local copy. To skip the
+lookups, give the local images registry-less-looking names and drop the
+frontend line (this only works when every layer, including the llama.cpp
+clone and the model downloads, is already in the build cache; those need the
+network on a first build):
+
+    docker tag docker.io/nvidia/cuda:13.4.3-devel-ubuntu24.04 localhost/cuda-devel:13.4.3
+    docker tag docker.io/nvidia/cuda:13.4.3-runtime-ubuntu24.04 localhost/cuda-runtime:13.4.3
+    sed '1{/^# syntax=/d}' Dockerfile > Dockerfile.offline
+    docker build -f Dockerfile.offline --target q4 \
+        --build-arg CUDA_DEVEL_IMAGE=localhost/cuda-devel:13.4.3 \
+        --build-arg CUDA_RUNTIME_IMAGE=localhost/cuda-runtime:13.4.3 \
+        -t mistral-small-4-optimized:q4 .
+
 Then run one image at a time; both listen on port 8000:
 
     docker compose --profile q4 up -d
@@ -115,6 +132,7 @@ variable; the main ones are:
 | `CONTEXT_SIZE` | 262144 | Total context, shared by all slots. |
 | `MMPROJ` | the baked-in projector | `none` for text-only; saves about 1 GB. |
 | `PREFILL_THINK` | `true` | End `high` effort prompts with `[THINK]` so the model cannot skip the thinking block (see Known Problems). `false` uses the GGUF's own template. |
+| `SINGLE_THINK_BLOCK` | `true` | Refuse `[THINK]` while a thinking block is open and after it ended (see Known Problems). `false` turns it off. |
 | `REASONING_BLOCK_EOG` | `true` | Refuse the end-of-sequence token while a thinking block is open (see Known Problems). `false` turns it off. |
 | `CUDA_VISIBLE_DEVICES` | GPU 0 (q4), all (q8) | |
 | `TENSOR_SPLIT` | even | Proportions per GPU (q8). It made no difference to speed. |
@@ -306,6 +324,24 @@ Known Problems
   (median 874 against 466 tokens) because the model now thinks where it used to
   skip. The end-of-sequence guard above also covers the first token, because the
   prompt now ends inside the block.
+- **The model sometimes writes `[THINK]` where it meant `[/THINK]`; the images
+  now prevent it.** `[THINK]` and `[/THINK]` are neighbouring tokens (ids 34 and
+  35). At the end of its reasoning the model gives `[/THINK]` about 97% and
+  `[THINK]` about 2% (measured at one position of a reply that slipped, with a
+  fixed seed). Sampling the slip restarts the thinking inside the block (the
+  reasoning then contains a literal `[THINK]`), or, if it comes right after the
+  `[/THINK]`, opens a second block that clients show as text: Open WebUI
+  closes its "Thinking" block and then shows `[THINK]` in the answer. The
+  patch's second option, `--reasoning-single-block`, refuses `[THINK]` while a
+  block is open and after it has ended (`SINGLE_THINK_BLOCK=false` turns it
+  off). A bias that raises `[THINK]` by 16 put it in 8 of 8 replies without the
+  option and 0 of 8 with it; with a 5-token thinking budget so that the block
+  ends first, it came after `[/THINK]` in 8 of 8 against 0 of 8. 160 seeded
+  replays of the recorded Open WebUI conversation (with and without invented
+  tools, chat completions and Responses API) had no `[THINK]` text. The
+  natural rate is low (1 of 60 replies in the run that found it), so those
+  counts alone prove little; the bias tests do. "bench/restart-bias-check.py"
+  and "bench/tag-probability.py" reproduce them.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
   generation one CPU thread is busy and the GPU is at 97% utilization, so
   the expert matrix multiplications are not running on the CPU.

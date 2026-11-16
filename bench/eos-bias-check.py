@@ -22,6 +22,7 @@ AI Disclosure:
 """
 import importlib.util
 import json
+import random
 import sys
 import urllib.request
 
@@ -33,6 +34,7 @@ base = sys.argv[1].rstrip("/")
 bias = float(sys.argv[2]) if len(sys.argv) > 2 else 12
 trials = int(sys.argv[3]) if len(sys.argv) > 3 else 8
 QUESTION = "What is 17 * 23? Explain briefly."
+SEEDS = random.Random(20261116)  # every request gets its own recorded seed
 
 
 def post(path, body):
@@ -49,7 +51,7 @@ for arm in ("chat", "chat with tools", "responses"):
     for guard in (False, True):
         stuck = total = 0
         for _ in range(trials):
-            extra = {"logit_bias": [[2, bias]]}
+            extra = {"logit_bias": [[2, bias]], "seed": SEEDS.getrandbits(31)}
             if not guard:
                 extra["reasoning_block_eog"] = False
             if arm == "responses":
