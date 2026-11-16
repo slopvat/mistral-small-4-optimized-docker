@@ -339,7 +339,7 @@ Known Problems
   ends first, it came after `[/THINK]` in 8 of 8 against 0 of 8. 160 seeded
   replays of the recorded Open WebUI conversation (with and without invented
   tools, chat completions and Responses API) had no `[THINK]` text. The
-  natural rate is low (1 of 60 replies in the run that found it), so those
+  natural rate is low (1 of 120 replies in the run that found it), so those
   counts alone prove little; the bias tests do. "bench/restart-bias-check.py"
   and "bench/tag-probability.py" reproduce them.
 - **llama.cpp issue [#30224][30224] does not apply to these images:** during
