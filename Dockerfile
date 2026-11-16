@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-
 # Mistral Small 4 119B served with llama.cpp on NVIDIA RTX PRO 6000 Blackwell
 # GPUs. Targets:
 #   q4     UD-Q4_K_XL (4-bit) on one GPU: the fastest quant that loses the
@@ -25,12 +23,16 @@
 # build secret (e.g. "docker build --secret id=hf_token,env=HF_TOKEN ...") so
 # it is not stored in the image.
 
-# The base images are pinned by digest. BuildKit asks the registry whether a
-# tag still points to the same image, even when the image is already on the
-# host, so a tag alone makes every build depend on the network; a digest names
-# the content and a local copy is used as it is. The same goes for the
-# Dockerfile frontend on the first line. To update, change the tag and digest
-# together.
+# The base images are pinned by tag and digest. When the host holds the tag at
+# that digest, BuildKit uses the local copy without asking the registry; any
+# other form makes it ask on every build. Without internet, a tag alone then
+# fails the build, and a digest alone or a tag the host lacks falls back to
+# the local copy only after the retries run out (400 s on the GPU host). The
+# frontend named by a "# syntax=" line would be looked up the same way, so
+# there is none: Docker's built-in Dockerfile frontend needs no lookup. To
+# update an image, change the tag and digest together and give the host the
+# new tag ("docker tag" of the local image, or "docker pull" and "docker tag"
+# by digest).
 ARG CUDA_DEVEL_IMAGE=docker.io/nvidia/cuda:13.4.3-devel-ubuntu24.04@sha256:5626a7d0ecafe3e7c115a452f6b05f20f214f8509346196a7835b205dc5b7fd9
 ARG CUDA_RUNTIME_IMAGE=docker.io/nvidia/cuda:13.4.3-runtime-ubuntu24.04@sha256:f58bd7a0701fae3a2160f22e1d451b77b349bd9ef83dad76f5529aa413c149a8
 

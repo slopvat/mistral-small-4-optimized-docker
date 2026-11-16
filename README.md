@@ -74,22 +74,15 @@ Build the images (this is the only step that needs network access):
 The q4 build downloads 70 GiB and the q8 build 124 GiB. The token in ".env" is only used during the
 build and is passed as a build secret, so it never ends up in an image.
 
-The Dockerfile pins its base images and the Dockerfile frontend by digest, so
-the registry is only needed when they are not on the host. BuildKit still
-looks them up first, and with the registry unreachable that costs about 3
-minutes of timeouts per lookup before it uses the local copy. To skip the
-lookups, give the local images registry-less-looking names and drop the
-frontend line (this only works when every layer, including the llama.cpp
-clone and the model downloads, is already in the build cache; those need the
-network on a first build):
-
-    docker tag docker.io/nvidia/cuda:13.4.3-devel-ubuntu24.04 localhost/cuda-devel:13.4.3
-    docker tag docker.io/nvidia/cuda:13.4.3-runtime-ubuntu24.04 localhost/cuda-runtime:13.4.3
-    sed '1{/^# syntax=/d}' Dockerfile > Dockerfile.offline
-    docker build -f Dockerfile.offline --target q4 \
-        --build-arg CUDA_DEVEL_IMAGE=localhost/cuda-devel:13.4.3 \
-        --build-arg CUDA_RUNTIME_IMAGE=localhost/cuda-runtime:13.4.3 \
-        -t mistral-small-4-optimized:q4 .
+The Dockerfile pins its base images as `name:tag@digest` and has no
+`# syntax=` line. On a host that holds those tags at those digests (`docker
+tag` an existing copy of `nvidia/cuda:13.4.3-devel-ubuntu24.04` and
+`nvidia/cuda:13.4.3-runtime-ubuntu24.04`), BuildKit makes no registry request,
+and a rebuild whose layers are all cached works without internet access. A
+digest without that tag, or a `# syntax=` line, makes BuildKit ask the registry
+first and, with it unreachable, wait about 400 s per image before using the
+local copy. The llama.cpp clone and the model downloads still need the network
+the first time they are built.
 
 Then run one image at a time; both listen on port 8000:
 
